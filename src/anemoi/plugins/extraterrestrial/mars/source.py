@@ -85,7 +85,6 @@ LOG = logging.getLogger(__name__)
 # The epoch is an arbitrary round date chosen so that the grid values
 # are easy to read and don't collide with real Earth reanalysis dates.
 _GRID_EPOCH = np.datetime64("2000-01-01T00:00:00", "ns")
-_GRID_STEP = np.timedelta64(2, "h")
 
 # One Mars mean solar day ("sol") expressed in SI (Earth) days.
 # 24 h 39 m 35.244 s  =  88 775.244 s
@@ -93,34 +92,53 @@ _GRID_STEP = np.timedelta64(2, "h")
 SOL_IN_EARTH_DAYS = 88_775.244 / 86_400.0  # ~1.02749125
 
 
-def sols_to_regular_grid(n: int) -> np.ndarray:
-    """Create a regular 2h Earth-datetime grid with *n* steps.
+def sols_to_regular_grid(n: int, frequency_h: int = 2) -> np.ndarray:
+    """Create a regular Earth-datetime grid with *n* steps.
 
     Parameters
     ----------
     n : int
         Number of time steps.
+    frequency_h : int
+        Grid step size in hours.  ``2`` for MACDA / OpenMars (12
+        steps/sol), ``1`` for EMARS (24 steps/sol).
 
     Returns
     -------
     np.ndarray
-        Array of ``numpy.datetime64[ns]`` values spaced exactly 2h apart,
+        Array of ``numpy.datetime64[ns]`` values evenly spaced,
         starting at :data:`_GRID_EPOCH`.
     """
-    return _GRID_EPOCH + np.arange(n, dtype="int64") * _GRID_STEP
+    step = np.timedelta64(frequency_h, "h")
+    return _GRID_EPOCH + np.arange(n, dtype="int64") * step
 
 
 # ---------------------------------------------------------------------------
 # Catalogue of known HuggingFace repos and their Zarr stores
 # ---------------------------------------------------------------------------
-_KNOWN_STORES: dict[str, dict[str, str]] = {
+_KNOWN_STORES: dict[str, dict] = {
     "ananyo01/ARCO-MACDA": {
         "default": "macda_combined.zarr",
+        "nlat": 36,
+        "nlon": 72,
+        "steps_per_sol": 12,
+        "frequency_h": 2,  # synthetic grid step in hours
     },
     "ananyo01/ARCO-OpenMars": {
         "default": "openmars_unified.zarr",
         "MY24-27": "openmars_MY24-27.zarr",
         "MY28-35": "openmars_MY28-35.zarr",
+        "nlat": 36,
+        "nlon": 72,
+        "steps_per_sol": 12,
+        "frequency_h": 2,
+    },
+    "ananyo01/ARCO-EMARS": {
+        "default": "emars_combined.zarr",
+        "nlat": 36,
+        "nlon": 60,
+        "steps_per_sol": 24,
+        "frequency_h": 1,
     },
 }
 
@@ -184,9 +202,31 @@ _RENAME_OPENMARS_SUFFIX: dict[str, str] = {
     "dustcol": "tcdo",
 }
 
+# EMARS: variables are prefixed with ``anal_mean_``.
+# After stripping the prefix, apply this rename map.
+_RENAME_EMARS_SUFFIX: dict[str, str] = {
+    "T": "t",
+    "U": "u",
+    "V": "v",
+    "ps": "sp",
+    "Surface_geopotential": "z_sfc",
+}
+
+# Auxiliary EMARS variables to drop (not spatial fields).
+_EMARS_AUX_PREFIXES = (
+    "anal_mean_Ls",
+    "anal_mean_MY",
+    "anal_mean_ak",
+    "anal_mean_bk",
+    "anal_mean_earth_",
+    "anal_mean_emars_sol",
+    "anal_mean_macda_sol",
+    "anal_mean_mars_",
+)
+
 _RENAME: dict[str, dict[str, str]] = {
     "ananyo01/ARCO-MACDA": _RENAME_MACDA,
-    # OpenMars renaming is handled by _merge_openmars_eras().
+    # OpenMars and EMARS are handled by dedicated functions.
 }
 
 # Valid OpenMars era prefixes (order matters: first era fills first)
@@ -225,6 +265,44 @@ def _merge_openmars_eras(ds: "xr.Dataset") -> "xr.Dataset":
     ds = ds.drop_vars(drop)
     for name, arr in merged.items():
         ds[name] = arr
+
+    return ds
+
+
+def _process_emars(ds: "xr.Dataset") -> "xr.Dataset":
+    """Strip ``anal_mean_`` prefix, drop auxiliary variables, rename fields.
+
+    EMARS variables are named ``anal_mean_T``, ``anal_mean_U``, etc.
+    Auxiliary time/coordinate arrays (Earth dates, Ls, ak/bk, …) are
+    dropped.  The ``pfull`` vertical dimension is renamed to ``level``
+    with 1-indexed integers.  Extra lat/lon coordinates (``latu``,
+    ``lonv``) are dropped.
+    """
+    # Drop auxiliary variables
+    aux_drop = [v for v in ds.data_vars if any(str(v).startswith(p) for p in _EMARS_AUX_PREFIXES)]
+    # Drop extra coordinates
+    for coord in ("latu", "lonv", "phalf"):
+        if coord in ds.coords:
+            aux_drop.append(coord)
+    if aux_drop:
+        ds = ds.drop_vars(aux_drop)
+
+    # Rename pfull → level with integer indices
+    if "pfull" in ds.dims:
+        n_lev = len(ds["pfull"])
+        ds = ds.rename({"pfull": "level"})
+        ds = ds.assign_coords(level=("level", np.arange(1, n_lev + 1)))
+
+    # Strip anal_mean_ prefix and apply rename
+    rename_map = {}
+    for var in list(ds.data_vars):
+        name = str(var)
+        if name.startswith("anal_mean_"):
+            suffix = name[len("anal_mean_") :]
+            std = _RENAME_EMARS_SUFFIX.get(suffix, suffix)
+            rename_map[name] = std
+    if rename_map:
+        ds = ds.rename(rename_map)
 
     return ds
 
@@ -271,14 +349,16 @@ def _open_hf_zarr(dataset: str) -> "xr.Dataset":
         decode_times=False,
     )
 
-    # ---- Replace Mars-sol axis with a synthetic regular 2h grid ----
+    # ---- Replace Mars-sol axis with a synthetic regular grid ----
+    freq_h = info.get("frequency_h", 2)
     if "time" in ds.coords:
         n = len(ds["time"])
-        grid_times = sols_to_regular_grid(n)
+        grid_times = sols_to_regular_grid(n, frequency_h=freq_h)
         ds = ds.assign_coords(time=("time", grid_times))
         LOG.info(
-            "Assigned %d-step synthetic 2h grid: %s .. %s",
+            "Assigned %d-step synthetic %dh grid: %s .. %s",
             n,
+            freq_h,
             grid_times[0],
             grid_times[-1],
         )
@@ -298,10 +378,13 @@ def _open_hf_zarr(dataset: str) -> "xr.Dataset":
         ds = ds.rename({"lev": "level"})
         ds = ds.assign_coords(level=("level", np.arange(1, n_levels + 1)))
 
-    # ---- Merge OpenMars eras / rename variables ----
+    # ---- Dataset-specific processing ----
     if dataset == "ananyo01/ARCO-OpenMars":
         ds = _merge_openmars_eras(ds)
         LOG.info("Merged OpenMars eras → variables: %s", list(ds.data_vars))
+    elif dataset == "ananyo01/ARCO-EMARS":
+        ds = _process_emars(ds)
+        LOG.info("Processed EMARS → variables: %s", list(ds.data_vars))
     else:
         rename_map = _RENAME.get(dataset, {})
         rename_map = {k: v for k, v in rename_map.items() if k in ds}

@@ -1,0 +1,45 @@
+# mars-openmars-hf-5p0-0024-0035-2h-v1
+# ARCO-OpenMARS: Open access to Mars Assimilated Remote Soundings
+# Source: Holmes, Lewis & Patel (2020)
+# DOI: 10.57967/hf/8741
+# Grid: 36 lat x 72 lon (5.0 deg), 35 sigma levels
+# Sampling: 12 steps/sol (every 2 Mars hours)
+# Coverage: Mars Years 24-35, MY27-28 gap filled with background forecast
+
+name: mars-openmars-hf-5p0-0024-0035-2h-v1
+
+description: >-
+  ARCO-OpenMARS reanalysis (MY24-35).
+  UK LMD MGCM with Analysis Correction scheme assimilating
+  MGS/TES, MRO/MCS, and MEx/SPICAM retrievals.
+  Eras MY24-27 and MY28-35 are merged into continuous variables.
+
+attribution: >-
+  Bhattacharya (2026), doi:10.57967/hf/8741.
+  Holmes, Lewis & Patel (2020), doi:10.1016/j.pss.2020.104962.
+
+licence: CC-BY-4.0
+
+dates:
+  start: '2000-01-01T00:00:00'
+  end:   '2020-01-15T22:00:00'
+  frequency: 2h
+
+input:
+  join:
+    - openmars:
+        dataset: ananyo01/ARCO-OpenMars
+
+    - mars_forcings:
+        dataset: ananyo01/ARCO-OpenMars
+        param:
+          - cos_latitude
+          - sin_latitude
+          - cos_longitude
+          - sin_longitude
+          - cos_julian_day
+          - sin_julian_day
+          - cos_local_time
+          - sin_local_time
+          - solar_longitude
+          - insolation

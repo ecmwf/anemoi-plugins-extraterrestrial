@@ -1,0 +1,45 @@
+# mars-macda-hf-5p0-0024-0035-2h-v1
+# ARCO-MACDA: Mars Analysis Correction Data Assimilation v2.0
+# Source: Montabone et al. (2014), Valeanu et al. (2026)
+# DOI: 10.57967/hf/8771
+# Grid: 36 lat x 72 lon (5.0 deg), 35 sigma levels
+# Sampling: 12 steps/sol (every 2 Mars hours)
+# Coverage: Mars Years 24-35, MY27-28 gap filled with THEMIS data
+
+name: mars-macda-hf-5p0-0024-0035-2h-v1
+
+description: >-
+  ARCO-MACDA v2.0 reanalysis (MY24-35).
+  UK LMD MGCM with Analysis Correction scheme assimilating
+  MGS/TES, ODY/THEMIS, and MRO/MCS retrievals.
+
+attribution: >-
+  Bhattacharya (2026), doi:10.57967/hf/8771.
+  Montabone et al. (2014), doi:10.1002/gdj3.13.
+  Valeanu et al. (2026), doi:10.5285/CD037A9EA387438FABF4D674DBE53088.
+
+licence: CC-BY-4.0
+
+dates:
+  start: '2000-01-01T00:00:00'
+  end:   '2022-01-04T22:00:00'
+  frequency: 2h
+
+input:
+  join:
+    - openmars:
+        dataset: ananyo01/ARCO-MACDA
+
+    - mars_forcings:
+        dataset: ananyo01/ARCO-MACDA
+        param:
+          - cos_latitude
+          - sin_latitude
+          - cos_longitude
+          - sin_longitude
+          - cos_julian_day
+          - sin_julian_day
+          - cos_local_time
+          - sin_local_time
+          - solar_longitude
+          - insolation

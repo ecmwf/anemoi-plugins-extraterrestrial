@@ -24,7 +24,14 @@ sin_julian_day     sin(sol-of-year angle)
 cos_local_time     cos(local-sol-of-day angle), period = 1 Mars sol
 sin_local_time     sin(local-sol-of-day angle)
 insolation         cos(Mars solar zenith angle), clipped to [0, 1]
+solar_longitude    areocentric solar longitude Ls in [0, 360) degrees
 =================  ========================================================
+
+Note: for topography (surface altitude), include the static field
+directly from the dataset rather than computing it as a forcing.
+EMARS provides ``z_sfc`` (Surface_geopotential); MACDA provides
+``z`` at level 1 (near-surface geopotential).  See Roy et al. (2026)
+§4.3.1 for the GraphCast forcing design.
 
 Example YAML
 ------------
@@ -36,6 +43,7 @@ Example YAML
             dataset: ananyo01/ARCO-MACDA
             param: [sp, skt]
         - mars_forcings:
+            dataset: ananyo01/ARCO-MACDA
             param:
               - cos_latitude
               - sin_latitude
@@ -43,6 +51,7 @@ Example YAML
               - sin_julian_day
               - cos_local_time
               - sin_local_time
+              - solar_longitude
               - insolation
 """
 
@@ -64,29 +73,29 @@ LOG = logging.getLogger(__name__)
 # Tropical year in sols (Ls = 0 → Ls = 360)
 MARS_YEAR_SOLS = 668.5991
 
-# Steps per sol on the synthetic 2h grid (each step = 1/12 sol)
-_STEPS_PER_SOL = 12
-
 # Mars obliquity (axial tilt) in radians
 _MARS_OBLIQUITY_RAD = np.deg2rad(25.19)
 
 # Grid epoch — must match the value in source.py
 _GRID_EPOCH = dt.datetime(2000, 1, 1, 0, 0, 0)
-_GRID_STEP_HOURS = 2
 
 
 # ---------------------------------------------------------------------------
 # Conversion helpers
 # ---------------------------------------------------------------------------
-def _datetime_to_sol(date: dt.datetime) -> float:
+def _datetime_to_sol(
+    date: dt.datetime,
+    steps_per_sol: int,
+    frequency_h: int,
+) -> float:
     """Convert a synthetic Earth datetime back to a Mars sol number.
 
     Sol 0 corresponds to the grid epoch (the first time step in any
     dataset opened by the openmars source).
     """
     delta = date - _GRID_EPOCH
-    step_index = delta.total_seconds() / (_GRID_STEP_HOURS * 3600)
-    return step_index / _STEPS_PER_SOL
+    step_index = delta.total_seconds() / (frequency_h * 3600)
+    return step_index / steps_per_sol
 
 
 def _sol_of_year(sol: float) -> float:
@@ -132,12 +141,21 @@ class MarsForcingMaker:
         "cos_local_time",
         "sin_local_time",
         "insolation",
+        "solar_longitude",
     }
 
-    def __init__(self, latitudes: np.ndarray, longitudes: np.ndarray) -> None:
+    def __init__(
+        self,
+        latitudes: np.ndarray,
+        longitudes: np.ndarray,
+        steps_per_sol: int,
+        frequency_h: int,
+    ) -> None:
         self.lat_rad = np.deg2rad(latitudes)
         self.lon_deg = longitudes
         self.n_points = len(latitudes)
+        self.steps_per_sol = steps_per_sol
+        self.frequency_h = frequency_h
 
     # -- spatial (time-independent) -----------------------------------------
     def cos_latitude(self, date: dt.datetime) -> np.ndarray:
@@ -154,18 +172,35 @@ class MarsForcingMaker:
 
     # -- sol-of-year (Mars yearly cycle) ------------------------------------
     def cos_julian_day(self, date: dt.datetime) -> np.ndarray:
-        sol = _datetime_to_sol(date)
+        sol = _datetime_to_sol(date, self.steps_per_sol, self.frequency_h)
         angle = _sol_of_year(sol) / MARS_YEAR_SOLS * 2.0 * np.pi
         return np.full(self.n_points, np.cos(angle))
 
     def sin_julian_day(self, date: dt.datetime) -> np.ndarray:
-        sol = _datetime_to_sol(date)
+        sol = _datetime_to_sol(date, self.steps_per_sol, self.frequency_h)
         angle = _sol_of_year(sol) / MARS_YEAR_SOLS * 2.0 * np.pi
         return np.full(self.n_points, np.sin(angle))
 
+    # -- solar longitude Ls (Mars seasonal coordinate) ----------------------
+    def solar_longitude(self, date: dt.datetime) -> np.ndarray:
+        """Areocentric solar longitude Ls in [0, 360) degrees.
+
+        Used by Mars-Adapted GraphCast (Roy et al., 2026) as a direct
+        forcing variable encoding martian seasonality.  Ls = 0 at
+        northern spring equinox, 90 at summer solstice, 180 at autumn
+        equinox, 270 at winter solstice.
+
+        Note: this is a linear approximation; Mars's eccentric orbit
+        causes Ls to advance non-uniformly, but the model can learn
+        the residual from the prognostic fields.
+        """
+        sol = _datetime_to_sol(date, self.steps_per_sol, self.frequency_h)
+        ls_deg = (_sol_of_year(sol) / MARS_YEAR_SOLS * 360.0) % 360.0
+        return np.full(self.n_points, ls_deg)
+
     # -- sol-of-day (Mars daily cycle, local) -------------------------------
     def cos_local_time(self, date: dt.datetime) -> np.ndarray:
-        sol = _datetime_to_sol(date)
+        sol = _datetime_to_sol(date, self.steps_per_sol, self.frequency_h)
         frac = _sol_of_day(sol)
         # local time offset by longitude (360° = 1 sol)
         local_frac = (frac + self.lon_deg / 360.0) % 1.0
@@ -173,7 +208,7 @@ class MarsForcingMaker:
         return np.cos(angle)
 
     def sin_local_time(self, date: dt.datetime) -> np.ndarray:
-        sol = _datetime_to_sol(date)
+        sol = _datetime_to_sol(date, self.steps_per_sol, self.frequency_h)
         frac = _sol_of_day(sol)
         local_frac = (frac + self.lon_deg / 360.0) % 1.0
         angle = local_frac * 2.0 * np.pi
@@ -181,7 +216,7 @@ class MarsForcingMaker:
 
     # -- insolation (Mars cos solar zenith angle) ---------------------------
     def insolation(self, date: dt.datetime) -> np.ndarray:
-        sol = _datetime_to_sol(date)
+        sol = _datetime_to_sol(date, self.steps_per_sol, self.frequency_h)
         ls_rad = _solar_longitude_rad(sol)
         dec = _mars_solar_declination(ls_rad)
 
@@ -207,15 +242,44 @@ class MarsForcingsSource(Source):
     ----------
     context : Any
         Pipeline context.
+    dataset : str
+        HuggingFace dataset id (e.g. ``"ananyo01/ARCO-MACDA"``).
+        The grid and temporal resolution are looked up automatically.
     param : list[str]
         Which forcing parameters to compute.
     """
 
     emoji = "🔴"
 
-    def __init__(self, context: Any, param: list[str]) -> None:
+    def __init__(
+        self,
+        context: Any,
+        dataset: str,
+        param: list[str],
+    ) -> None:
+        """Initialise Mars forcings source.
+
+        Parameters
+        ----------
+        context : Any
+            Pipeline context.
+        dataset : str
+            HuggingFace dataset id (e.g. ``"ananyo01/ARCO-MACDA"``).
+        param : list[str]
+            Which forcing parameters to compute.
+        """
         super().__init__(context)
         self.param = param if isinstance(param, list) else [param]
+
+        from anemoi.plugins.extraterrestrial.mars.source import _KNOWN_STORES
+
+        info = _KNOWN_STORES.get(dataset)
+        if info is None:
+            raise ValueError(f"Unknown dataset '{dataset}' for mars_forcings.  " f"Known: {list(_KNOWN_STORES)}")
+        self._nlat = info["nlat"]
+        self._nlon = info["nlon"]
+        self._steps_per_sol = info["steps_per_sol"]
+        self._frequency_h = info["frequency_h"]
 
         unknown = set(self.param) - MarsForcingMaker.SUPPORTED
         if unknown:
@@ -228,10 +292,11 @@ class MarsForcingsSource(Source):
 
         self.context.trace(self.emoji, f"mars_forcings({self.param})")
 
-        # Build the 5°×5° Mars grid (same grid used by both MACDA
-        # and OpenMars: 36 latitudes, 72 longitudes).
-        lats = np.arange(87.5, -90, -5.0)  # 87.5, 82.5, ..., -87.5
-        lons = np.arange(-180.0, 180.0, 5.0)  # -180, -175, ..., 175
+        # Build grid from the catalogue metadata
+        lat_spacing = 180.0 / self._nlat
+        lon_spacing = 360.0 / self._nlon
+        lats = np.arange(90.0 - lat_spacing / 2, -90.0, -lat_spacing)
+        lons = np.arange(-180.0, 180.0, lon_spacing)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
         flat_lats = lat_grid.ravel()
         flat_lons = lon_grid.ravel()
@@ -246,7 +311,12 @@ class MarsForcingsSource(Source):
         )
         field0 = template_fields[0]
 
-        maker = MarsForcingMaker(flat_lats, flat_lons)
+        maker = MarsForcingMaker(
+            flat_lats,
+            flat_lons,
+            steps_per_sol=self._steps_per_sol,
+            frequency_h=self._frequency_h,
+        )
 
         from anemoi.transform.fields import new_field_with_metadata
         from anemoi.transform.fields import new_fieldlist_from_list
