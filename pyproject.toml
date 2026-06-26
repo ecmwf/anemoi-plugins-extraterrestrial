@@ -1,0 +1,26 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = [ "setuptools>=75" ]
+
+[project]
+name = "anemoi-plugins-extraterrestrial"
+version = "0.1.0"
+description = "Anemoi-datasets source plugin for extraterrestrial datasets"
+requires-python = ">=3.12"
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = []
+optional-dependencies.mars = [
+  "earthkit-data",
+  "fsspec>=2026.6",
+  "huggingface-hub>=1.21",
+  "xarray>=2026.4",
+  "zarr>=3",
+]
+entry-points."anemoi.datasets.create.sources".mars_forcings = "anemoi.plugins.extraterrestrial.mars.forcings:MarsForcingsSource"
+entry-points."anemoi.datasets.create.sources".openmars = "anemoi.plugins.extraterrestrial.mars.source:OpenMarsSource"
+
+[tool.setuptools]
+packages.find.where = [ "src" ]
