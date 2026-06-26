@@ -2,13 +2,10 @@
 
 <p align="center">
   <a href="https://github.com/ecmwf/codex/raw/refs/heads/main/Project Maturity">
-    <img src="https://github.com/ecmwf/codex/raw/refs/heads/main/Project Maturity/incubating_badge.svg" alt="Maturity Level">
+    <img src="https://github.com/ecmwf/codex/raw/refs/heads/main/Project Maturity/sandbox_badge.svg" alt="Maturity Level">
   </a>
   <a href="https://opensource.org/licenses/apache-2-0">
     <img src="https://img.shields.io/badge/Licence-Apache 2.0-blue.svg" alt="Licence">
-  </a>
-  <a href="https://github.com/ecmwf/anemoi-transform/releases">
-    <img src="https://img.shields.io/github/v/release/ecmwf/anemoi-transform?color=purple&label=Release" alt="Latest Release">
   </a>
 </p>
 
