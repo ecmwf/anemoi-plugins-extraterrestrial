@@ -22,5 +22,10 @@ optional-dependencies.mars = [
 entry-points."anemoi.datasets.create.sources".mars_forcings = "anemoi.plugins.extraterrestrial.mars.forcings:MarsForcingsSource"
 entry-points."anemoi.datasets.create.sources".openmars = "anemoi.plugins.extraterrestrial.mars.source:OpenMarsSource"
 
+[dependency-groups]
+dev = [
+  "pytest>=9.1.1",
+]
+
 [tool.setuptools]
 packages.find.where = [ "src" ]

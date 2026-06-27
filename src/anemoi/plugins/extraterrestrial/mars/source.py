@@ -307,6 +307,127 @@ def _process_emars(ds: "xr.Dataset") -> "xr.Dataset":
     return ds
 
 
+def _sort_and_fill_gaps(ds: "xr.Dataset", raw_sols: np.ndarray, steps_per_sol: int) -> "xr.Dataset":
+    """Sort the dataset by sol and insert NaN-filled steps for gaps.
+
+    Some datasets have their time axis out of order (MACDA interleaves
+    Mars Year segments) and/or contain forward gaps (OpenMars MY27-28).
+    This function:
+
+    1. **Drops** time steps with NaN sol values.
+    2. **Sorts** the dataset so sol values are monotonically increasing.
+    3. **Removes duplicate** sol values (keeps first occurrence).
+    4. **Detects gaps** where consecutive sols jump by more than 1.5×
+       the expected step and inserts NaN-filled placeholder steps.
+
+    The inserted NaN steps should be listed in ``dates.missing`` in the
+    recipe config so the pipeline excludes them from training.
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        Dataset with the original (sol-based) time coordinate.
+    raw_sols : np.ndarray
+        Raw sol values from the time coordinate.
+    steps_per_sol : int
+        Expected number of steps per sol (12 for MACDA/OpenMars,
+        24 for EMARS).
+
+    Returns
+    -------
+    xr.Dataset
+        Sorted dataset with gap steps inserted (if any).
+    """
+    import xarray as xr
+
+    sol_step = 1.0 / steps_per_sol
+    n_orig = len(raw_sols)
+
+    # ---- 1. Drop NaN sols ----
+    valid_mask = ~np.isnan(raw_sols)
+    if not np.all(valid_mask):
+        n_nan = int((~valid_mask).sum())
+        LOG.info("Dropping %d time steps with NaN sol values.", n_nan)
+        valid_indices = np.where(valid_mask)[0]
+        ds = ds.isel(time=valid_indices)
+        raw_sols = raw_sols[valid_mask]
+
+    # ---- 2. Sort by sol ----
+    sort_order = np.argsort(raw_sols)
+    if not np.array_equal(sort_order, np.arange(len(sort_order))):
+        LOG.info("Sorting %d time steps by sol value.", len(raw_sols))
+        ds = ds.isel(time=sort_order)
+        raw_sols = raw_sols[sort_order]
+
+    # ---- 3. Remove duplicate sols ----
+    _, unique_idx = np.unique(raw_sols, return_index=True)
+    if len(unique_idx) < len(raw_sols):
+        n_dups = len(raw_sols) - len(unique_idx)
+        LOG.info("Removing %d duplicate sol values.", n_dups)
+        ds = ds.isel(time=unique_idx)
+        raw_sols = raw_sols[unique_idx]
+
+    # ---- 4. Detect gaps and insert NaN-filled steps ----
+    diffs = np.diff(raw_sols)
+    gap_indices = np.where(diffs > sol_step * 1.5)[0]
+
+    if len(gap_indices) == 0:
+        if len(raw_sols) != n_orig:
+            LOG.info(
+                "After sort/dedup: %d steps (was %d). No gaps.",
+                len(raw_sols),
+                n_orig,
+            )
+        return ds
+
+    pieces = []
+    prev = 0
+    total_inserted = 0
+    for gi in gap_indices:
+        n_missing = int(np.round((raw_sols[gi + 1] - raw_sols[gi]) / sol_step)) - 1
+        if n_missing <= 0:
+            continue
+
+        LOG.warning(
+            "Sol gap: %.2f -> %.2f (%d missing steps, ~%.0f sols). " "Inserting NaN-filled steps.",
+            raw_sols[gi],
+            raw_sols[gi + 1],
+            n_missing,
+            raw_sols[gi + 1] - raw_sols[gi],
+        )
+
+        insert_at = gi + 1
+        pieces.append(ds.isel(time=slice(prev, insert_at)))
+
+        # Build a NaN-filled dataset slice
+        template = ds.isel(time=slice(insert_at - 1, insert_at))
+        nan_data = {}
+        for var in template.data_vars:
+            shape = (n_missing,) + template[var].shape[1:]
+            nan_data[var] = xr.DataArray(
+                np.full(shape, np.nan, dtype=np.float32),
+                dims=template[var].dims,
+            )
+        dummy_time = np.arange(n_missing, dtype="float64")
+        nan_ds = xr.Dataset(nan_data, coords={"time": dummy_time})
+        for coord in template.coords:
+            if coord != "time" and coord in ds.coords:
+                nan_ds = nan_ds.assign_coords({coord: ds.coords[coord]})
+        pieces.append(nan_ds)
+
+        prev = insert_at
+        total_inserted += n_missing
+
+    pieces.append(ds.isel(time=slice(prev, None)))
+    ds = xr.concat(pieces, dim="time")
+    LOG.info(
+        "After sort + gap fill: %d total steps (%d NaN steps inserted).",
+        len(ds.time),
+        total_inserted,
+    )
+    return ds
+
+
 def _open_hf_zarr(dataset: str) -> "xr.Dataset":
     """Open a Zarr v3 store from a HuggingFace ``datasets`` repo.
 
@@ -349,9 +470,13 @@ def _open_hf_zarr(dataset: str) -> "xr.Dataset":
         decode_times=False,
     )
 
-    # ---- Replace Mars-sol axis with a synthetic regular grid ----
+    # ---- Detect sol gaps and insert NaN-filled steps ----
     freq_h = info.get("frequency_h", 2)
+    steps_per_sol = info["steps_per_sol"]
     if "time" in ds.coords:
+        raw_sols = ds["time"].values.astype("float64")
+        ds = _sort_and_fill_gaps(ds, raw_sols, steps_per_sol)
+
         n = len(ds["time"])
         grid_times = sols_to_regular_grid(n, frequency_h=freq_h)
         ds = ds.assign_coords(time=("time", grid_times))
