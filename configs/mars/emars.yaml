@@ -1,4 +1,4 @@
-# mars-emars-hf-5p0x6p0-0024-0033-1h-v1
+# mars-emars-hf-5p0x6p0-0024-0033-1h-v2
 # ARCO-EMARS: Ensemble Mars Atmosphere Reanalysis System v1.0
 # Source: Greybush et al. (2019)
 # DOI: 10.57967/hf/8859
@@ -6,7 +6,7 @@
 # Sampling: 24 steps/sol (every Mars hour)
 # Coverage: Mars Years 24-33, data gap MY27-28 (no TES/MCS)
 
-name: mars-emars-hf-5p0x6p0-0024-0033-1h-v1
+name: mars-emars-hf-5p0x6p0-0024-0033-1h-v2
 
 description: >-
   ARCO-EMARS v1.0 reanalysis ensemble mean (MY24-33).

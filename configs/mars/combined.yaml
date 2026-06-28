@@ -1,10 +1,10 @@
-# mars-openmars-macda-hf-5p0-0024-0035-2h-v1
+# mars-openmars-macda-hf-5p0-0024-0035-2h-v2
 # Combined dataset: core variables from OpenMARS, extras from MACDA
 # Grid: 36 lat x 72 lon (5.0 deg), 35 sigma levels
 # Sampling: 12 steps/sol (every 2 Mars hours)
 # Coverage: Mars Years 24-35 (limited by OpenMARS end date)
 
-name: mars-openmars-macda-hf-5p0-0024-0035-2h-v1
+name: mars-openmars-macda-hf-5p0-0024-0035-2h-v2
 
 description: >-
   Combined ARCO-Mars dataset (MY24-35).

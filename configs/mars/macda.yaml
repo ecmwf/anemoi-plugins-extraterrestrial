@@ -1,4 +1,4 @@
-# mars-macda-hf-5p0-0024-0035-2h-v1
+# mars-macda-hf-5p0-0024-0035-2h-v2
 # ARCO-MACDA: Mars Analysis Correction Data Assimilation v2.0
 # Source: Montabone et al. (2014), Valeanu et al. (2026)
 # DOI: 10.57967/hf/8771
@@ -6,7 +6,7 @@
 # Sampling: 12 steps/sol (every 2 Mars hours)
 # Coverage: Mars Years 24-35, MY27-28 gap filled with THEMIS data
 
-name: mars-macda-hf-5p0-0024-0035-2h-v1
+name: mars-macda-hf-5p0-0024-0035-2h-v2
 
 description: >-
   ARCO-MACDA v2.0 reanalysis (MY24-35).

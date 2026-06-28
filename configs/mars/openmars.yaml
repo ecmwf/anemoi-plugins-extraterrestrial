@@ -1,4 +1,4 @@
-# mars-openmars-hf-5p0-0024-0035-2h-v1
+# mars-openmars-hf-5p0-0024-0035-2h-v2
 # ARCO-OpenMARS: Open access to Mars Assimilated Remote Soundings
 # Source: Holmes, Lewis & Patel (2020)
 # DOI: 10.57967/hf/8741
@@ -6,7 +6,7 @@
 # Sampling: 12 steps/sol (every 2 Mars hours)
 # Coverage: Mars Years 24-35, MY27-28 gap filled with background forecast
 
-name: mars-openmars-hf-5p0-0024-0035-2h-v1
+name: mars-openmars-hf-5p0-0024-0035-2h-v2
 
 description: >-
   ARCO-OpenMARS reanalysis (MY24-35).
