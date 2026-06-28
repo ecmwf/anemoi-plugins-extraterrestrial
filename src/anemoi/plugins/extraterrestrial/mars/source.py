@@ -67,12 +67,40 @@ from typing import Any
 import numpy as np
 from anemoi.datasets.create.sources.xarray import XarraySourceBase
 from anemoi.datasets.create.sources.xarray_support import load_one
+from anemoi.datasets.create.sources.xarray_support.field import XArrayField
 from anemoi.datasets.create.types import DateList
 
 if TYPE_CHECKING:
     import xarray as xr
 
 LOG = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Monkey-patch XArrayField.resolution  (upstream returns None / TODO)
+# ---------------------------------------------------------------------------
+# The gridded creator reads ``first_field.resolution`` to store in dataset
+# metadata.  The upstream xarray field returns ``None``.  We compute it
+# from the lat/lon grid so the metadata is populated correctly.
+
+
+@property  # type: ignore[misc]
+def _xarray_field_resolution(self: Any) -> str | None:
+    """Compute resolution from lat/lon grid spacing."""
+    try:
+        lats = np.unique(self.latitudes)
+        lons = np.unique(self.longitudes)
+    except Exception:
+        return None
+    if len(lats) < 2 or len(lons) < 2:
+        return None
+    lat_sp = round(float(np.median(np.abs(np.diff(np.sort(lats))))), 4)
+    lon_sp = round(float(np.median(np.abs(np.diff(np.sort(lons))))), 4)
+    if abs(lat_sp - lon_sp) < 0.001:
+        return str(lat_sp)
+    return f"{lat_sp}x{lon_sp}"
+
+
+XArrayField.resolution = _xarray_field_resolution  # type: ignore[assignment]
 
 # ---------------------------------------------------------------------------
 # Synthetic regular Earth-time grid
@@ -308,7 +336,7 @@ def _process_emars(ds: "xr.Dataset") -> "xr.Dataset":
 
 
 def _sort_and_fill_gaps(ds: "xr.Dataset", raw_sols: np.ndarray, steps_per_sol: int) -> "xr.Dataset":
-    """Sort the dataset by sol and insert NaN-filled steps for gaps.
+    """Sort the dataset by sol, deduplicate, and warn about gaps.
 
     Some datasets have their time axis out of order (MACDA interleaves
     Mars Year segments) and/or contain forward gaps (OpenMars MY27-28).
@@ -317,11 +345,10 @@ def _sort_and_fill_gaps(ds: "xr.Dataset", raw_sols: np.ndarray, steps_per_sol: i
     1. **Drops** time steps with NaN sol values.
     2. **Sorts** the dataset so sol values are monotonically increasing.
     3. **Removes duplicate** sol values (keeps first occurrence).
-    4. **Detects gaps** where consecutive sols jump by more than 1.5×
-       the expected step and inserts NaN-filled placeholder steps.
-
-    The inserted NaN steps should be listed in ``dates.missing`` in the
-    recipe config so the pipeline excludes them from training.
+    4. **Warns** about gaps where consecutive sols jump by more than
+       1.5× the expected step.  The gap boundaries should be listed
+       in ``dates.missing`` in the recipe config so the pipeline
+       excludes them from training.
 
     Parameters
     ----------
@@ -368,16 +395,20 @@ def _sort_and_fill_gaps(ds: "xr.Dataset", raw_sols: np.ndarray, steps_per_sol: i
         raw_sols = raw_sols[unique_idx]
 
     # ---- 4. Detect gaps and insert NaN-filled steps ----
+    # NaN insertion is essential: without it, the synthetic datetime→sol
+    # mapping breaks for all steps after the gap, making forcings
+    # (sol-of-day, sol-of-year, Ls, insolation) compute wrong values.
+    # It also ensures that joined datasets share the same date axis.
+    # The inserted NaN dates should be listed in ``dates.missing`` in
+    # the recipe config so the pipeline skips them during training.
+
     diffs = np.diff(raw_sols)
     gap_indices = np.where(diffs > sol_step * 1.5)[0]
 
+    if len(raw_sols) != n_orig:
+        LOG.info("After sort/dedup: %d steps (was %d).", len(raw_sols), n_orig)
+
     if len(gap_indices) == 0:
-        if len(raw_sols) != n_orig:
-            LOG.info(
-                "After sort/dedup: %d steps (was %d). No gaps.",
-                len(raw_sols),
-                n_orig,
-            )
         return ds
 
     pieces = []
@@ -389,7 +420,9 @@ def _sort_and_fill_gaps(ds: "xr.Dataset", raw_sols: np.ndarray, steps_per_sol: i
             continue
 
         LOG.warning(
-            "Sol gap: %.2f -> %.2f (%d missing steps, ~%.0f sols). " "Inserting NaN-filled steps.",
+            "Sol gap at step %d: sol %.2f -> %.2f (%d NaN steps inserted, ~%.0f sols). "
+            "List these dates in 'dates.missing' to exclude from training.",
+            gi + total_inserted,
             raw_sols[gi],
             raw_sols[gi + 1],
             n_missing,
