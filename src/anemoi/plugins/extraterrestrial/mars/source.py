@@ -432,15 +432,25 @@ def _sort_and_fill_gaps(ds: "xr.Dataset", raw_sols: np.ndarray, steps_per_sol: i
         insert_at = gi + 1
         pieces.append(ds.isel(time=slice(prev, insert_at)))
 
-        # Build a NaN-filled dataset slice
+        # Build a NaN-filled dataset slice using dask arrays to avoid
+        # materialising potentially huge arrays in memory (e.g. 6120
+        # steps × 35 levels × 36 lat × 72 lon would be ~22 GB per var).
+        import dask.array as da
+
         template = ds.isel(time=slice(insert_at - 1, insert_at))
         nan_data = {}
         for var in template.data_vars:
-            shape = (n_missing,) + template[var].shape[1:]
-            nan_data[var] = xr.DataArray(
-                np.full(shape, np.nan, dtype=np.float32),
-                dims=template[var].dims,
+            spatial_shape = template[var].shape[1:]
+            # Use same chunk sizes as the original data for the
+            # spatial dimensions; single chunk for the time axis.
+            spatial_chunks = tuple(s for s in spatial_shape)
+            nan_arr = da.full(
+                (n_missing,) + spatial_shape,
+                np.nan,
+                dtype=np.float32,
+                chunks=(n_missing,) + spatial_chunks,
             )
+            nan_data[var] = xr.DataArray(nan_arr, dims=template[var].dims)
         dummy_time = np.arange(n_missing, dtype="float64")
         nan_ds = xr.Dataset(nan_data, coords={"time": dummy_time})
         for coord in template.coords:
@@ -507,7 +517,8 @@ def _open_hf_zarr(dataset: str) -> "xr.Dataset":
     freq_h = info.get("frequency_h", 2)
     steps_per_sol = info["steps_per_sol"]
     if "time" in ds.coords:
-        raw_sols = ds["time"].values.astype("float64")
+        # .load() ensures we get a numpy array even if the coord is dask-backed
+        raw_sols = np.asarray(ds["time"].load().values, dtype="float64")
         ds = _sort_and_fill_gaps(ds, raw_sols, steps_per_sol)
 
         n = len(ds["time"])
