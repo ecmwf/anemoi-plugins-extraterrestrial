@@ -22,14 +22,11 @@ licence: CC-BY-4.0
 
 dates:
   start: '2000-01-01T00:00:00'
-  end:   '2021-06-08T22:00:00'
+  end:   '2020-01-15T22:00:00'
   frequency: 2h
-  # MY27-28 gap: ~510 sols where neither TES nor MCS had data.
-  # The source inserts 6120 NaN-filled steps to keep the synthetic
-  # datetime→sol mapping correct for forcings and dataset joining.
-  missing:
-    - start: '2005-06-03T00:00:00'
-      end:   '2006-10-25T22:00:00'
+  # The MY27-28 gap (TES/MCS data void) is filled with background
+  # forecast in the source zarr, so no NaN steps are inserted and
+  # no missing block is needed.
 
 input:
   join:
