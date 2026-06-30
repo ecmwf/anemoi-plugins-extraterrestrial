@@ -28,7 +28,7 @@ dates:
 
 input:
   join:
-    - openmars:
+    - arcomars:
         dataset: ananyo01/ARCO-MACDA
 
     - mars_forcings:
@@ -38,9 +38,10 @@ input:
           - sin_latitude
           - cos_longitude
           - sin_longitude
-          - cos_julian_day
-          - sin_julian_day
+          - cos_sol_of_year
+          - sin_sol_of_year
           - cos_local_time
           - sin_local_time
-          - solar_longitude
+          - cos_solar_longitude
+          - sin_solar_longitude
           - insolation

@@ -49,11 +49,11 @@ Example YAML recipe
 
     input:
       join:
-        - openmars:
+        - arcomars:
             dataset: ananyo01/ARCO-MACDA
             param: [t, u, v, sp]
 
-        - openmars:
+        - arcomars:
             dataset: ananyo01/ARCO-OpenMars
             param: [MY28-35_t, MY28-35_u, MY28-35_v, MY28-35_sp]
 """
@@ -567,13 +567,14 @@ def _open_hf_zarr(dataset: str) -> "xr.Dataset":
 # ---------------------------------------------------------------------------
 # Source class
 # ---------------------------------------------------------------------------
-class OpenMarsSource(XarraySourceBase):
+class ArcoMarsSource(XarraySourceBase):
     """Anemoi-datasets source for ARCO Mars reanalysis on HuggingFace.
 
-    Opens a Zarr v3 store from a HuggingFace ``datasets`` repository,
-    converts the native Mars-sol time axis to Earth ``datetime64``, and
-    exposes the result through the standard anemoi xarray field-list
-    machinery.
+    Supports multiple underlying datasets (MACDA, OpenMars, EMARS) — all
+    hosted as ARCO Zarr stores.  Opens a Zarr v3 store from a HuggingFace
+    ``datasets`` repository, converts the native Mars-sol time axis to
+    Earth ``datetime64``, and exposes the result through the standard
+    anemoi xarray field-list machinery.
 
     Parameters
     ----------

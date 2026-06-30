@@ -193,12 +193,13 @@ class TestMarsForcingMakerSupported:
             "sin_latitude",
             "cos_longitude",
             "sin_longitude",
-            "cos_julian_day",
-            "sin_julian_day",
+            "cos_sol_of_year",
+            "sin_sol_of_year",
             "cos_local_time",
             "sin_local_time",
             "insolation",
-            "solar_longitude",
+            "cos_solar_longitude",
+            "sin_solar_longitude",
         }
         assert MarsForcingMaker.SUPPORTED == expected
 
@@ -296,7 +297,7 @@ class TestMarsForcingMakerGeometry:
 
 
 class TestMarsForcingMakerYearlyCycle:
-    """Test yearly cycle forcings (julian day, solar longitude)."""
+    """Test yearly cycle forcings (sol of year, solar longitude)."""
 
     @pytest.fixture
     def maker(self):
@@ -305,88 +306,103 @@ class TestMarsForcingMakerYearlyCycle:
         lons = np.array([0.0, 0.0, 0.0])
         return MarsForcingMaker(lats, lons, steps_per_sol=12, frequency_h=2)
 
-    def test_cos_julian_day_at_epoch(self, maker):
-        """At epoch (sol 0), cos_julian_day should be 1."""
-        result = maker.cos_julian_day(_GRID_EPOCH)
+    def test_cos_sol_of_year_at_epoch(self, maker):
+        """At epoch (sol 0), cos_sol_of_year should be 1."""
+        result = maker.cos_sol_of_year(_GRID_EPOCH)
         assert result.shape == (3,)
         np.testing.assert_allclose(result, 1.0, atol=1e-10)
 
-    def test_sin_julian_day_at_epoch(self, maker):
-        """At epoch (sol 0), sin_julian_day should be 0."""
-        result = maker.sin_julian_day(_GRID_EPOCH)
+    def test_sin_sol_of_year_at_epoch(self, maker):
+        """At epoch (sol 0), sin_sol_of_year should be 0."""
+        result = maker.sin_sol_of_year(_GRID_EPOCH)
         assert result.shape == (3,)
         np.testing.assert_allclose(result, 0.0, atol=1e-10)
 
-    def test_cos_julian_day_at_half_year(self, maker):
-        """At half Mars year, cos_julian_day should be -1."""
+    def test_cos_sol_of_year_at_half_year(self, maker):
+        """At half Mars year, cos_sol_of_year should be -1."""
         # Half year = MARS_YEAR_SOLS / 2 sols = MARS_YEAR_SOLS / 2 * 24h
         hours = MARS_YEAR_SOLS / 2.0 * 24.0
         date = _GRID_EPOCH + dt.timedelta(hours=hours)
-        result = maker.cos_julian_day(date)
+        result = maker.cos_sol_of_year(date)
         assert result.shape == (3,)
         np.testing.assert_allclose(result, -1.0, atol=1e-6)
 
-    def test_sin_julian_day_at_quarter_year(self, maker):
-        """At quarter Mars year, sin_julian_day should be 1."""
+    def test_sin_sol_of_year_at_quarter_year(self, maker):
+        """At quarter Mars year, sin_sol_of_year should be 1."""
         hours = MARS_YEAR_SOLS / 4.0 * 24.0
         date = _GRID_EPOCH + dt.timedelta(hours=hours)
-        result = maker.sin_julian_day(date)
+        result = maker.sin_sol_of_year(date)
         assert result.shape == (3,)
         np.testing.assert_allclose(result, 1.0, atol=1e-6)
 
-    def test_julian_day_uniform_across_grid(self, maker):
-        """Julian day forcings should be uniform across all grid points."""
+    def test_sol_of_year_uniform_across_grid(self, maker):
+        """Sol-of-year forcings should be uniform across all grid points."""
         date = _GRID_EPOCH + dt.timedelta(days=100)
-        cos_result = maker.cos_julian_day(date)
-        sin_result = maker.sin_julian_day(date)
+        cos_result = maker.cos_sol_of_year(date)
+        sin_result = maker.sin_sol_of_year(date)
 
         # All values should be identical
         assert np.all(cos_result == cos_result[0])
         assert np.all(sin_result == sin_result[0])
 
-    def test_trig_identity_julian_day(self, maker):
-        """cos²(julian_day) + sin²(julian_day) should equal 1."""
+    def test_trig_identity_sol_of_year(self, maker):
+        """cos²(sol_of_year) + sin²(sol_of_year) should equal 1."""
         date = _GRID_EPOCH + dt.timedelta(days=123)
-        cos_jd = maker.cos_julian_day(date)
-        sin_jd = maker.sin_julian_day(date)
+        cos_jd = maker.cos_sol_of_year(date)
+        sin_jd = maker.sin_sol_of_year(date)
         identity = cos_jd**2 + sin_jd**2
         np.testing.assert_allclose(identity, 1.0, rtol=1e-10)
 
-    def test_solar_longitude_at_epoch(self, maker):
-        """At epoch, solar longitude should be 0."""
-        result = maker.solar_longitude(_GRID_EPOCH)
+    def test_cos_solar_longitude_at_epoch(self, maker):
+        """At epoch (Ls=0), cos(Ls) should be 1."""
+        result = maker.cos_solar_longitude(_GRID_EPOCH)
+        assert result.shape == (3,)
+        np.testing.assert_allclose(result, 1.0, atol=1e-10)
+
+    def test_sin_solar_longitude_at_epoch(self, maker):
+        """At epoch (Ls=0), sin(Ls) should be 0."""
+        result = maker.sin_solar_longitude(_GRID_EPOCH)
         assert result.shape == (3,)
         np.testing.assert_allclose(result, 0.0, atol=1e-10)
 
-    def test_solar_longitude_at_half_year(self, maker):
-        """At half Mars year, Ls should be 180 degrees."""
+    def test_cos_solar_longitude_at_half_year(self, maker):
+        """At half Mars year (Ls=180), cos(Ls) should be -1."""
         hours = MARS_YEAR_SOLS / 2.0 * 24.0
         date = _GRID_EPOCH + dt.timedelta(hours=hours)
-        result = maker.solar_longitude(date)
+        result = maker.cos_solar_longitude(date)
         assert result.shape == (3,)
-        np.testing.assert_allclose(result, 180.0, atol=1e-4)
+        np.testing.assert_allclose(result, -1.0, atol=1e-4)
 
-    def test_solar_longitude_at_quarter_year(self, maker):
-        """At quarter Mars year, Ls should be 90 degrees."""
+    def test_sin_solar_longitude_at_quarter_year(self, maker):
+        """At quarter Mars year (Ls=90), sin(Ls) should be 1."""
         hours = MARS_YEAR_SOLS / 4.0 * 24.0
         date = _GRID_EPOCH + dt.timedelta(hours=hours)
-        result = maker.solar_longitude(date)
+        result = maker.sin_solar_longitude(date)
         assert result.shape == (3,)
-        np.testing.assert_allclose(result, 90.0, atol=1e-4)
+        np.testing.assert_allclose(result, 1.0, atol=1e-4)
 
-    def test_solar_longitude_range(self, maker):
-        """Solar longitude should always be in [0, 360)."""
+    def test_solar_longitude_trig_identity(self, maker):
+        """cos²(Ls) + sin²(Ls) should equal 1."""
         for i in range(20):
             date = _GRID_EPOCH + dt.timedelta(days=i * 50)
-            result = maker.solar_longitude(date)
-            assert np.all(result >= 0.0)
-            assert np.all(result < 360.0)
+            cos_ls = maker.cos_solar_longitude(date)
+            sin_ls = maker.sin_solar_longitude(date)
+            np.testing.assert_allclose(cos_ls**2 + sin_ls**2, 1.0, rtol=1e-10)
+
+    def test_solar_longitude_in_range(self, maker):
+        """cos/sin(Ls) should always be in [-1, 1]."""
+        for i in range(20):
+            date = _GRID_EPOCH + dt.timedelta(days=i * 50)
+            assert np.all(np.abs(maker.cos_solar_longitude(date)) <= 1.0)
+            assert np.all(np.abs(maker.sin_solar_longitude(date)) <= 1.0)
 
     def test_solar_longitude_uniform_across_grid(self, maker):
-        """Solar longitude should be uniform across all grid points."""
+        """Solar longitude components should be uniform across all grid points."""
         date = _GRID_EPOCH + dt.timedelta(days=200)
-        result = maker.solar_longitude(date)
-        assert np.all(result == result[0])
+        cos_ls = maker.cos_solar_longitude(date)
+        sin_ls = maker.sin_solar_longitude(date)
+        assert np.all(cos_ls == cos_ls[0])
+        assert np.all(sin_ls == sin_ls[0])
 
 
 class TestMarsForcingMakerDailyCycle:
@@ -553,8 +569,8 @@ class TestMarsForcingMakerOutputProperties:
             "sin_latitude",
             "cos_longitude",
             "sin_longitude",
-            "cos_julian_day",
-            "sin_julian_day",
+            "cos_sol_of_year",
+            "sin_sol_of_year",
             "cos_local_time",
             "sin_local_time",
         ]
@@ -571,13 +587,12 @@ class TestMarsForcingMakerOutputProperties:
             assert np.all(result >= 0.0)
             assert np.all(result <= 1.0)
 
-    def test_solar_longitude_in_range(self, maker):
-        """Solar longitude should be in [0, 360)."""
+    def test_solar_longitude_components_in_range(self, maker):
+        """cos/sin(Ls) should be in [-1, 1]."""
         for i in range(10):
             date = _GRID_EPOCH + dt.timedelta(days=i * 67)
-            result = maker.solar_longitude(date)
-            assert np.all(result >= 0.0)
-            assert np.all(result < 360.0)
+            assert np.all(np.abs(maker.cos_solar_longitude(date)) <= 1.0)
+            assert np.all(np.abs(maker.sin_solar_longitude(date)) <= 1.0)
 
 
 class TestMarsForcingMakerEdgeCases:
@@ -660,22 +675,22 @@ class TestMarsForcingMakerConsistency:
         lons = np.array([0.0, 90.0, 180.0])
         return MarsForcingMaker(lats, lons, steps_per_sol=12, frequency_h=2)
 
-    def test_julian_day_matches_solar_longitude(self, maker):
-        """Julian day trig and solar longitude should be consistent."""
+    def test_sol_of_year_matches_solar_longitude(self, maker):
+        """Sol-of-year trig and solar longitude trig should be consistent.
+
+        Both encode the same yearly angle (linear Ls approximation),
+        so cos/sin(sol_of_year) == cos/sin(solar_longitude).
+        """
         date = _GRID_EPOCH + dt.timedelta(days=200)
 
-        cos_jd = maker.cos_julian_day(date)
-        sin_jd = maker.sin_julian_day(date)
-        ls_deg = maker.solar_longitude(date)
+        cos_soy = maker.cos_sol_of_year(date)
+        sin_soy = maker.sin_sol_of_year(date)
+        cos_ls = maker.cos_solar_longitude(date)
+        sin_ls = maker.sin_solar_longitude(date)
 
-        # Convert Ls to radians and compute trig
-        ls_rad = np.deg2rad(ls_deg[0])  # uniform across grid
-        expected_cos = np.cos(ls_rad)
-        expected_sin = np.sin(ls_rad)
-
-        # Should match the julian day trig values
-        assert np.isclose(cos_jd[0], expected_cos, atol=1e-6)
-        assert np.isclose(sin_jd[0], expected_sin, atol=1e-6)
+        # Should match — both are trig of the same underlying angle
+        assert np.isclose(cos_soy[0], cos_ls[0], atol=1e-6)
+        assert np.isclose(sin_soy[0], sin_ls[0], atol=1e-6)
 
     def test_insolation_uses_consistent_local_time(self, maker):
         """Insolation computation should be consistent with local time."""

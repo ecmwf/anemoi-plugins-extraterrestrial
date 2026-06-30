@@ -20,8 +20,8 @@ optional-dependencies.mars = [
   "zarr>=3",
 ]
 scripts.mars-revert-time = "anemoi.plugins.extraterrestrial.mars.revert_time:main"
+entry-points."anemoi.datasets.create.sources".arcomars = "anemoi.plugins.extraterrestrial.mars.source:ArcoMarsSource"
 entry-points."anemoi.datasets.create.sources".mars_forcings = "anemoi.plugins.extraterrestrial.mars.forcings:MarsForcingsSource"
-entry-points."anemoi.datasets.create.sources".openmars = "anemoi.plugins.extraterrestrial.mars.source:OpenMarsSource"
 
 [dependency-groups]
 dev = [

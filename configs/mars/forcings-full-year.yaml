@@ -1,0 +1,26 @@
+name: mars-forcings-full-year
+
+description: >-
+  Forcings-only dataset spanning one full Mars year (~668.6 sols).
+  No prognostic data — used to validate the yearly/daily cycles.
+
+dates:
+  start: '2000-01-01T00:00:00'
+  end:   '2001-11-20T22:00:00'   # 668 sols × 12 steps/sol × 2h = ~8016 steps
+  frequency: 2h
+
+input:
+  mars_forcings:
+    dataset: ananyo01/ARCO-OpenMars
+    param:
+      - cos_latitude
+      - sin_latitude
+      - cos_longitude
+      - sin_longitude
+      - cos_sol_of_year
+      - sin_sol_of_year
+      - cos_local_time
+      - sin_local_time
+      - cos_solar_longitude
+      - sin_solar_longitude
+      - insolation

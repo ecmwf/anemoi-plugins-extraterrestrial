@@ -28,11 +28,11 @@ dates:
 input:
   join:
     # --- Core variables from OpenMars (t, u, v, sp, skt, co2ice, tcdo) ---
-    - openmars:
+    - arcomars:
         dataset: ananyo01/ARCO-OpenMars
 
     # --- MACDA-only variables (dust, z, w, ssrd, strd) ---
-    - openmars:
+    - arcomars:
         dataset: ananyo01/ARCO-MACDA
         param: [dust, z, w, ssrd, strd]
 
@@ -44,9 +44,10 @@ input:
           - sin_latitude
           - cos_longitude
           - sin_longitude
-          - cos_julian_day
-          - sin_julian_day
+          - cos_sol_of_year
+          - sin_sol_of_year
           - cos_local_time
           - sin_local_time
-          - solar_longitude
+          - cos_solar_longitude
+          - sin_solar_longitude
           - insolation
