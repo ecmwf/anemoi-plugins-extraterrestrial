@@ -6,7 +6,7 @@
 # Sampling: 12 steps/sol (every 2 Mars hours)
 # Coverage: Mars Years 24-35, MY27-28 gap (data void, not filled)
 
-name: mars-openmars-hf-5p0-0024-0035-2h-v2
+name: mars-openmars-hf-5p0-0024-0035-2h-v3
 
 description: >-
   ARCO-OpenMARS reanalysis (MY24-35).

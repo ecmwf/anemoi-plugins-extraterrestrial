@@ -6,7 +6,7 @@
 # Sampling: 24 steps/sol (every Mars hour)
 # Coverage: Mars Years 24-33, data gap MY27-28 (no TES/MCS)
 
-name: mars-emars-hf-5p0x6p0-0024-0033-1h-v2
+name: mars-emars-hf-5p0x6p0-0024-0033-1h-v3
 
 description: >-
   ARCO-EMARS v1.0 reanalysis ensemble mean (MY24-33).
