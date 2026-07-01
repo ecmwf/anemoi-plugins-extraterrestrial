@@ -4,7 +4,7 @@
 # DOI: 10.57967/hf/8741
 # Grid: 36 lat x 72 lon (5.0 deg), 35 sigma levels
 # Sampling: 12 steps/sol (every 2 Mars hours)
-# Coverage: Mars Years 24-35, MY27-28 gap filled with background forecast
+# Coverage: Mars Years 24-35, MY27-28 gap (data void, not filled)
 
 name: mars-openmars-hf-5p0-0024-0035-2h-v2
 
@@ -24,9 +24,12 @@ dates:
   start: '2000-01-01T00:00:00'
   end:   '2020-01-15T22:00:00'
   frequency: 2h
-  # The MY27-28 gap (TES/MCS data void) is filled with background
-  # forecast in the source zarr, so no NaN steps are inserted and
-  # no missing block is needed.
+  # The MY27-28 gap (TES/MCS data void) is a genuine data gap.
+  # The source inserts NaN-filled steps to preserve the datetime-to-sol
+  # mapping.  These dates are listed below so the pipeline skips them.
+  missing:
+    - start: '2005-06-03T00:00:00'
+      end:   '2006-10-25T22:00:00'
 
 input:
   join:

@@ -4,7 +4,7 @@
 # DOI: 10.57967/hf/8771
 # Grid: 36 lat x 72 lon (5.0 deg), 35 sigma levels
 # Sampling: 12 steps/sol (every 2 Mars hours)
-# Coverage: Mars Years 24-35, MY27-28 gap filled with THEMIS data
+# Coverage: Mars Years 24-35 (continuous, no gaps)
 
 name: mars-macda-hf-5p0-0024-0035-2h-v2
 
