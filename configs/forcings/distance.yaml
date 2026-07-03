@@ -1,0 +1,26 @@
+# Distance forcings test dataset
+# Small MACDA subset with Mars-Phobos distance forcings.
+# Covers 10 sols (~20 Earth days) at 2h cadence.
+
+name: mars-macda-distance-test
+
+description: >-
+  Test dataset: ARCO-MACDA surface fields joined with
+  distance forcings (Mars to Phobos).
+
+dates:
+  start: '2000-01-01T00:00:00'
+  end:   '2000-01-20T22:00:00'
+  frequency: 2h
+
+input:
+  join:
+    - arcomars:
+        dataset: ananyo01/ARCO-MACDA
+        param: [sp, skt]
+
+    - distance_forcings:
+        template: ${input.join.0.arcomars}
+        param:
+          - delta_distance_from_mars_to_phobos
+          - distance_from_mars_to_phobos

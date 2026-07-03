@@ -12,6 +12,9 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
 ]
 dependencies = []
+optional-dependencies.distances = [
+  "astropy>=8",
+]
 optional-dependencies.mars = [
   "earthkit-data",
   "fsspec>=2026.6",
@@ -21,6 +24,7 @@ optional-dependencies.mars = [
 ]
 scripts.mars-revert-time = "anemoi.plugins.extraterrestrial.mars.revert_time:main"
 entry-points."anemoi.datasets.create.sources".arcomars = "anemoi.plugins.extraterrestrial.mars.source:ArcoMarsSource"
+entry-points."anemoi.datasets.create.sources".distance_forcings = "anemoi.plugins.extraterrestrial.distance_forcing:DistanceForcingsSource"
 entry-points."anemoi.datasets.create.sources".mars_forcings = "anemoi.plugins.extraterrestrial.mars.forcings:MarsForcingsSource"
 
 [dependency-groups]

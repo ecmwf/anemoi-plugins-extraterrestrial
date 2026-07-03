@@ -346,7 +346,7 @@ def _sort_and_fill_gaps(ds: "xr.Dataset", raw_sols: np.ndarray, steps_per_sol: i
     2. **Sorts** the dataset so sol values are monotonically increasing.
     3. **Removes duplicate** sol values (keeps first occurrence).
     4. **Warns** about gaps where consecutive sols jump by more than
-       1.5× the expected step.  The gap boundaries should be listed
+       1.5x the expected step.  The gap boundaries should be listed
        in ``dates.missing`` in the recipe config so the pipeline
        excludes them from training.
 
