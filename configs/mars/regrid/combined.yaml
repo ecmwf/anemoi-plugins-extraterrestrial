@@ -1,0 +1,45 @@
+# mars-openmars-macda-hf-o24-0024-0035-2h-v3
+# Regridded variant of ../combined.yaml.
+#
+# The source is the *already-built* anemoi dataset produced by
+# ../combined.yaml (mars-openmars-macda-hf-5p0-0024-0035-2h-v3),
+# which is opened via the built-in ``anemoi_dataset`` source and
+# then passed through a ``regrid`` step onto an octahedral reduced
+# Gaussian O24 grid using the pre-computed regridding matrix at
+# static/matrices/mars/5deg_to_o24.npz.
+#
+# See ../openmars_regridded.yaml for the canonical example of the
+# pipe: [<source>, regrid] pattern (left untouched).
+
+name: mars-openmars-macda-hf-o24-0024-0035-2h-v3
+
+description: >-
+  Combined ARCO-Mars dataset (MY24-35), regridded to O24 from the
+  native 5.0 deg lat/lon dataset produced by ../combined.yaml.
+  Core variables (t, u, v, sp, skt, co2ice, tcdo) from OpenMARS,
+  additional variables (dust, z, w, ssrd, strd) from MACDA.
+
+attribution: >-
+  Bhattacharya (2026), doi:10.57967/hf/8741, doi:10.57967/hf/8771.
+  Holmes, Lewis & Patel (2020), doi:10.1016/j.pss.2020.104962.
+  Montabone et al. (2014), doi:10.1002/gdj3.13.
+
+licence: CC-BY-4.0
+
+dates:
+  start: '2000-01-01T00:00:00'
+  end:   '2021-06-08T22:00:00'
+  frequency: 2h
+  # The MY27-28 gap in OpenMars is a genuine data void (not filled).
+  # The source dataset already carries NaN-filled steps here; keep
+  # the same ``missing`` block so the pipeline skips them.
+  missing:
+    - start: '2005-06-03T00:00:00'
+      end:   '2006-10-25T22:00:00'
+
+input:
+  pipe:
+    - anemoi_dataset:
+        dataset: mars-openmars-macda-hf-5p0-0024-0035-2h-v3
+    - regrid:
+        matrix: static/matrices/mars/5deg_to_o24.npz
