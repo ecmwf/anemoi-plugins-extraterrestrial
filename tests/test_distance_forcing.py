@@ -268,7 +268,19 @@ class TestComputeWithMocks:
     @pytest.fixture
     def mock_astropy(self):
         """Mock astropy so tests run without ephemeris data."""
+        # Time is patched to always return this single mock instance,
+        # which means both ``Time(date)`` and ``Time("J2000.0")`` yield
+        # ``mock_time`` in production code.  We configure ``mock_time -
+        # mock_time`` to produce an object whose ``.jd`` is a real
+        # scalar so downstream arithmetic (``2*pi*days/period``) works
+        # with numpy trig funcs.  Using ``jd = 0.0`` also pins the
+        # satellite orbit angle to 0, making Phobos land at
+        # ``parent + (semi_major, 0, 0)`` — exactly what the fixture's
+        # ``phobos`` body-mock is positioned to match.
+        elapsed = MagicMock()
+        elapsed.jd = 0.0
         mock_time = MagicMock()
+        mock_time.__sub__.return_value = elapsed
 
         # Earth at origin, Moon at (384400, 0, 0)
         bodies = {

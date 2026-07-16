@@ -12,6 +12,52 @@ Mars atmosphere reanalysis archive (Bhattacharya 2026).
 | `openmars.yaml` | [ARCO-OpenMARS](https://huggingface.co/datasets/ananyo01/ARCO-OpenMars) | 36x72 (5.0 deg) | 35 sigma | MY 24-35 | 12 | [10.57967/hf/8741](https://doi.org/10.57967/hf/8741) |
 | `emars.yaml` | [ARCO-EMARS](https://huggingface.co/datasets/ananyo01/ARCO-EMARS) | 36x60 (5x6 deg) | 28 hybrid | MY 24-33 | 24 | [10.57967/hf/8859](https://doi.org/10.57967/hf/8859) |
 
+## Backends
+
+Each dataset is available from two hosting backends, selectable per
+recipe via the `backend:` argument on the `arcomars` source. The
+canonical short name (`ARCO-MACDA`, `ARCO-OpenMars`, `ARCO-EMARS`)
+is the same on both — the plugin translates it to the correct
+backend-specific repository id.
+
+| Backend | Value | Repo pattern | Client | Extra install |
+|---|---|---|---|---|
+| HuggingFace Datasets (default) | `hf` | `ananyo01/ARCO-*` | `fsspec[hf]` | `pip install .[mars]` |
+| Earthmover / Arraylake | `earthmover` | `arco-planetary/ARCO-*` | `arraylake` | `pip install .[mars,mars-earthmover]` |
+
+The Earthmover backend follows the client pattern from
+[ARCO-Mars-Examples](https://github.com/GalacticBobster/ARCO-Mars-Examples)
+(`arraylake.Client().get_repo(...).readonly_session("main").store`).
+It requires Arraylake credentials in the environment.
+
+### Store selection per dataset
+
+Store / group selection is fixed per canonical dataset so recipes stay
+backend-agnostic:
+
+| Dataset | HF store | Earthmover group |
+|---|---|---|
+| ARCO-MACDA | `macda_combined.zarr` | root (`""`) |
+| ARCO-OpenMars | `openmars_unified.zarr` | `my24` + `my28` merged into one continuous dataset |
+| ARCO-EMARS | `emars_combined.zarr` | `mean` (ensemble mean) |
+
+### Example recipe snippets
+
+```yaml
+# Default HuggingFace backend
+input:
+  join:
+    - arcomars:
+        dataset: ARCO-MACDA
+
+# Earthmover backend
+input:
+  join:
+    - arcomars:
+        dataset: ARCO-EMARS
+        backend: earthmover
+```
+
 ## Time coordinate
 
 Mars reanalysis data uses Mars sols as the native time coordinate.

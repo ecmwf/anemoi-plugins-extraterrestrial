@@ -3,7 +3,17 @@
 # This software is licensed under the terms of the Apache Licence Version 2.0
 # which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
 
-"""Anemoi-datasets source for ARCO Mars reanalysis stores on HuggingFace.
+"""Anemoi-datasets source for ARCO Mars reanalysis stores.
+
+Two hosting backends are supported (selectable per recipe via the
+``backend:`` argument):
+
+* ``hf`` (default) — HuggingFace Datasets (``ananyo01/ARCO-*``), opened
+  via ``fsspec``.
+* ``earthmover`` — Earthmover / Arraylake catalogue
+  (``arco-planetary/ARCO-*``), opened via ``arraylake.Client``.  See
+  https://github.com/GalacticBobster/ARCO-Mars-Examples for the
+  upstream reference client usage.
 
 Supports the following datasets hosted by ``ananyo01`` on HuggingFace:
 
@@ -49,13 +59,16 @@ Example YAML recipe
 
     input:
       join:
+        # HuggingFace backend (default)
         - arcomars:
-            dataset: ananyo01/ARCO-MACDA
+            dataset: ARCO-MACDA          # canonical short name
             param: [t, u, v, sp]
 
+        # Earthmover / Arraylake backend
         - arcomars:
-            dataset: ananyo01/ARCO-OpenMars
-            param: [MY28-35_t, MY28-35_u, MY28-35_v, MY28-35_sp]
+            dataset: ARCO-EMARS
+            backend: earthmover
+            param: [t, u, v]
 """
 
 from __future__ import annotations
@@ -142,33 +155,113 @@ def sols_to_regular_grid(n: int, frequency_h: int = 2) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# Catalogue of known HuggingFace repos and their Zarr stores
+# Backend catalogue
 # ---------------------------------------------------------------------------
+# Each Mars reanalysis dataset is hosted on multiple backends:
+#
+# * **hf** — HuggingFace Datasets (``ananyo01/ARCO-*``), Zarr v3 stores
+#   opened via ``fsspec``.
+# * **earthmover** — Earthmover / Arraylake catalogue
+#   (``arco-planetary/ARCO-*``), opened via ``arraylake.Client``.  Data
+#   is organised into named *groups* within each repo.
+#
+# The catalogue below is keyed by a canonical short name (``ARCO-MACDA``,
+# ``ARCO-OpenMars``, ``ARCO-EMARS``).  Recipes may pass either the short
+# name or a fully-qualified backend-specific id (``ananyo01/ARCO-MACDA``
+# or ``arco-planetary/ARCO-MACDA``); see :func:`_normalise_dataset`.
+
+# Canonical short names for the three Mars reanalyses.
+CANONICAL_MACDA = "ARCO-MACDA"
+CANONICAL_OPENMARS = "ARCO-OpenMars"
+CANONICAL_EMARS = "ARCO-EMARS"
+
 _KNOWN_STORES: dict[str, dict] = {
-    "ananyo01/ARCO-MACDA": {
-        "default": "macda_combined.zarr",
+    CANONICAL_MACDA: {
         "nlat": 36,
         "nlon": 72,
         "steps_per_sol": 12,
         "frequency_h": 2,  # synthetic grid step in hours
+        "hf": {
+            "repo": "ananyo01/ARCO-MACDA",
+            "default": "macda_combined.zarr",
+        },
+        "earthmover": {
+            "repo": "arco-planetary/ARCO-MACDA",
+            "default_group": "",
+        },
     },
-    "ananyo01/ARCO-OpenMars": {
-        "default": "openmars_unified.zarr",
-        "MY24-27": "openmars_MY24-27.zarr",
-        "MY28-35": "openmars_MY28-35.zarr",
+    CANONICAL_OPENMARS: {
         "nlat": 36,
         "nlon": 72,
         "steps_per_sol": 12,
         "frequency_h": 2,
+        "hf": {
+            "repo": "ananyo01/ARCO-OpenMars",
+            "default": "openmars_unified.zarr",
+            "MY24-27": "openmars_MY24-27.zarr",
+            "MY28-35": "openmars_MY28-35.zarr",
+        },
+        "earthmover": {
+            "repo": "arco-planetary/ARCO-OpenMARS",
+            # Earthmover stores the two eras as separate zarr groups.
+            # We open both and merge them (identical logic to the HF
+            # unified store) so the user sees one continuous dataset.
+            "era_groups": ("my24", "my28"),
+        },
     },
-    "ananyo01/ARCO-EMARS": {
-        "default": "emars_combined.zarr",
+    CANONICAL_EMARS: {
         "nlat": 36,
         "nlon": 60,
         "steps_per_sol": 24,
         "frequency_h": 1,
+        "hf": {
+            "repo": "ananyo01/ARCO-EMARS",
+            "default": "emars_combined.zarr",
+        },
+        "earthmover": {
+            "repo": "arco-planetary/ARCO-EMARS",
+            # EMARS on earthmover has 'mean' (ensemble mean) and 'sprd'
+            # (ensemble spread) groups.  We default to the mean.
+            "default_group": "mean",
+        },
     },
 }
+
+# Reverse lookup: any known id (short or fully-qualified per backend)
+# maps to the canonical short name.
+_ID_TO_CANONICAL: dict[str, str] = {}
+for _canon, _info in _KNOWN_STORES.items():
+    _ID_TO_CANONICAL[_canon] = _canon
+    _ID_TO_CANONICAL[_canon.lower()] = _canon
+    for _backend in ("hf", "earthmover"):
+        _repo = _info[_backend]["repo"]
+        _ID_TO_CANONICAL[_repo] = _canon
+        _ID_TO_CANONICAL[_repo.lower()] = _canon
+# Common capitalisation variants for OpenMars vs OpenMARS.
+_ID_TO_CANONICAL["ARCO-OpenMARS"] = CANONICAL_OPENMARS
+_ID_TO_CANONICAL["ARCO-openmars"] = CANONICAL_OPENMARS
+
+
+def _normalise_dataset(dataset: str) -> str:
+    """Return the canonical short name for a dataset id.
+
+    Accepts either the short name (``ARCO-MACDA``) or a fully-qualified
+    id for any backend (``ananyo01/ARCO-MACDA``,
+    ``arco-planetary/ARCO-MACDA``).  Matching is case-insensitive.
+
+    Raises
+    ------
+    ValueError
+        If the id is not recognised.
+    """
+    canon = _ID_TO_CANONICAL.get(dataset) or _ID_TO_CANONICAL.get(dataset.lower())
+    if canon is None:
+        raise ValueError(
+            f"Unknown Mars dataset id '{dataset}'.  Known: "
+            f"{sorted(set(_KNOWN_STORES))} (or fully-qualified backend ids)."
+        )
+    return canon
+
 
 # Non-data variables that should be dropped before handing the
 # dataset to the anemoi xarray field-list machinery.  These are
@@ -251,11 +344,6 @@ _EMARS_AUX_PREFIXES = (
     "anal_mean_macda_sol",
     "anal_mean_mars_",
 )
-
-_RENAME: dict[str, dict[str, str]] = {
-    "ananyo01/ARCO-MACDA": _RENAME_MACDA,
-    # OpenMars and EMARS are handled by dedicated functions.
-}
 
 # Valid OpenMars era prefixes (order matters: first era fills first)
 _OPENMARS_ERAS = ("MY24-27", "MY28-35")
@@ -471,51 +559,27 @@ def _sort_and_fill_gaps(ds: "xr.Dataset", raw_sols: np.ndarray, steps_per_sol: i
     return ds
 
 
-def _open_hf_zarr(dataset: str) -> "xr.Dataset":
-    """Open a Zarr v3 store from a HuggingFace ``datasets`` repo.
+_RENAME_CANONICAL: dict[str, dict[str, str]] = {
+    CANONICAL_MACDA: _RENAME_MACDA,
+    # OpenMars and EMARS are handled by dedicated functions.
+}
 
-    The default (unified/combined) store is selected automatically
-    from :data:`_KNOWN_STORES`.
 
-    Parameters
-    ----------
-    dataset : str
-        HuggingFace dataset id, e.g. ``"ananyo01/ARCO-MACDA"``.
+def _postprocess_dataset(
+    ds: "xr.Dataset",
+    canonical: str,
+    info: dict,
+) -> "xr.Dataset":
+    """Common post-processing shared by all backends.
 
-    Returns
-    -------
-    xr.Dataset
-        The opened dataset with time converted to Earth ``datetime64``.
+    Handles: sol-gap fill, synthetic Earth-time grid assignment,
+    dropping auxiliary vars, level renaming, and dataset-specific
+    variable renaming/era merging.
     """
-    import xarray as xr
-    import zarr  # noqa: F401  – must be >= 3.0 for zarr-format-3 support
-    from fsspec import filesystem
-
-    # Silence the per-request HTTP logging from httpx / huggingface_hub
-    for _logger_name in ("httpx", "huggingface_hub", "fsspec"):
-        logging.getLogger(_logger_name).setLevel(logging.WARNING)
-
-    info = _KNOWN_STORES.get(dataset)
-    if info is None:
-        raise ValueError(f"No default store known for dataset '{dataset}'.  " f"Known datasets: {list(_KNOWN_STORES)}.")
-    store = info["default"]
-
-    hf_path = f"datasets/{dataset}/{store}"
-    LOG.info("Opening HuggingFace zarr store: %s", hf_path)
-
-    fs = filesystem("hf", token=True)
-    fs_map = fs.get_mapper(hf_path)
-
-    ds = xr.open_zarr(
-        fs_map,
-        zarr_format=3,
-        consolidated=False,
-        decode_times=False,
-    )
-
-    # ---- Detect sol gaps and insert NaN-filled steps ----
     freq_h = info.get("frequency_h", 2)
     steps_per_sol = info["steps_per_sol"]
+
+    # ---- Detect sol gaps and insert NaN-filled steps ----
     if "time" in ds.coords:
         # .load() ensures we get a numpy array even if the coord is dask-backed
         raw_sols = np.asarray(ds["time"].load().values, dtype="float64")
@@ -548,14 +612,14 @@ def _open_hf_zarr(dataset: str) -> "xr.Dataset":
         ds = ds.assign_coords(level=("level", np.arange(1, n_levels + 1)))
 
     # ---- Dataset-specific processing ----
-    if dataset == "ananyo01/ARCO-OpenMars":
+    if canonical == CANONICAL_OPENMARS:
         ds = _merge_openmars_eras(ds)
         LOG.info("Merged OpenMars eras → variables: %s", list(ds.data_vars))
-    elif dataset == "ananyo01/ARCO-EMARS":
+    elif canonical == CANONICAL_EMARS:
         ds = _process_emars(ds)
         LOG.info("Processed EMARS → variables: %s", list(ds.data_vars))
     else:
-        rename_map = _RENAME.get(dataset, {})
+        rename_map = _RENAME_CANONICAL.get(canonical, {})
         rename_map = {k: v for k, v in rename_map.items() if k in ds}
         if rename_map:
             ds = ds.rename(rename_map)
@@ -564,26 +628,189 @@ def _open_hf_zarr(dataset: str) -> "xr.Dataset":
     return ds
 
 
+def _open_hf_zarr(canonical: str) -> "xr.Dataset":
+    """Open the unified Zarr v3 store from a HuggingFace ``datasets`` repo.
+
+    Always opens the ``default`` (unified/combined) store listed in
+    :data:`_KNOWN_STORES` for the given canonical Mars dataset.
+
+    Parameters
+    ----------
+    canonical : str
+        Canonical Mars dataset short name (e.g. ``"ARCO-MACDA"``).
+
+    Returns
+    -------
+    xr.Dataset
+        The opened dataset with time converted to Earth ``datetime64``.
+    """
+    import xarray as xr
+    import zarr  # noqa: F401  – must be >= 3.0 for zarr-format-3 support
+    from fsspec import filesystem
+
+    # Silence the per-request HTTP logging from httpx / huggingface_hub
+    for _logger_name in ("httpx", "huggingface_hub", "fsspec"):
+        logging.getLogger(_logger_name).setLevel(logging.WARNING)
+
+    info = _KNOWN_STORES[canonical]
+    hf_info = info["hf"]
+    store = hf_info["default"]
+    repo = hf_info["repo"]
+
+    hf_path = f"datasets/{repo}/{store}"
+    LOG.info("Opening HuggingFace zarr store: %s", hf_path)
+
+    fs = filesystem("hf", token=True)
+    fs_map = fs.get_mapper(hf_path)
+
+    ds = xr.open_zarr(
+        fs_map,
+        zarr_format=3,
+        consolidated=False,
+        decode_times=False,
+    )
+
+    return _postprocess_dataset(ds, canonical, info)
+
+
+def _open_em_zarr(canonical: str) -> "xr.Dataset":
+    """Open a Zarr store from the Earthmover / Arraylake catalogue.
+
+    Uses :class:`arraylake.Client` to fetch a read-only session on the
+    ``main`` branch of the repository, following the client pattern in
+    https://github.com/GalacticBobster/ARCO-Mars-Examples.
+
+    Group selection is fixed per dataset (matching what the HF backend
+    exposes):
+
+    * MACDA — single root group (``""``).
+    * EMARS — ``mean`` (ensemble mean).
+    * OpenMars — both era groups (``my24``, ``my28``) are opened and
+      merged into a single continuous dataset, mirroring the HF
+      unified store.
+
+    Parameters
+    ----------
+    canonical : str
+        Canonical Mars dataset short name.
+
+    Returns
+    -------
+    xr.Dataset
+        The opened (and post-processed) dataset with time converted
+        to Earth ``datetime64``.
+    """
+    import xarray as xr
+    from arraylake import Client
+
+    info = _KNOWN_STORES[canonical]
+    em_info = info["earthmover"]
+    repo = em_info["repo"]
+
+    client = Client()
+    repo_handle = client.get_repo(repo)
+    session = repo_handle.readonly_session("main")
+
+    if canonical == CANONICAL_OPENMARS:
+        # Merge the era groups into a single dataset with era-prefixed
+        # variables so the downstream ``_merge_openmars_eras`` logic in
+        # ``_postprocess_dataset`` can consume it unchanged (giving
+        # parity with the HF unified store).
+        era_to_prefix = {"my24": "MY24-27", "my28": "MY28-35"}
+        era_groups = em_info["era_groups"]
+        LOG.info(
+            "Opening Earthmover OpenMars groups: %s (repo %s)",
+            era_groups,
+            repo,
+        )
+        pieces: list[xr.Dataset] = []
+        for eg in era_groups:
+            ds_era = xr.open_zarr(
+                session.store,
+                group=eg,
+                consolidated=False,
+                decode_times=False,
+            )
+            prefix = era_to_prefix.get(eg, eg)
+            rename = {v: f"{prefix}_{v}" for v in ds_era.data_vars}
+            pieces.append(ds_era.rename(rename))
+        # Outer merge on time so eras with disjoint sol ranges become
+        # a single dataset with NaN where each era has no data.
+        ds = xr.merge(pieces, join="outer")
+    else:
+        grp = em_info.get("default_group", "")
+        LOG.info("Opening Earthmover zarr: repo=%s group=%r", repo, grp)
+        ds = xr.open_zarr(
+            session.store,
+            group=grp,
+            consolidated=False,
+            decode_times=False,
+        )
+
+    return _postprocess_dataset(ds, canonical, info)
+
+
+def _open_arco_zarr(dataset: str, backend: str = "hf") -> "xr.Dataset":
+    """Backend-dispatching opener for ARCO-Mars datasets.
+
+    Parameters
+    ----------
+    dataset : str
+        Any accepted dataset id (short name or fully-qualified for
+        either backend); see :func:`_normalise_dataset`.
+    backend : {"hf", "earthmover"}
+        Which hosting backend to use.  ``"hf"`` uses the HuggingFace
+        Datasets Zarr stores; ``"earthmover"`` uses the Arraylake
+        catalogue.
+
+    Returns
+    -------
+    xr.Dataset
+        The opened (and post-processed) dataset with time converted
+        to Earth ``datetime64``.
+    """
+    canonical = _normalise_dataset(dataset)
+    if backend == "hf":
+        return _open_hf_zarr(canonical)
+    if backend == "earthmover":
+        return _open_em_zarr(canonical)
+    raise ValueError(f"Unknown backend '{backend}'.  Expected 'hf' or 'earthmover'.")
+
+
 # ---------------------------------------------------------------------------
 # Source class
 # ---------------------------------------------------------------------------
 class ArcoMarsSource(XarraySourceBase):
-    """Anemoi-datasets source for ARCO Mars reanalysis on HuggingFace.
+    """Anemoi-datasets source for ARCO Mars reanalysis.
 
-    Supports multiple underlying datasets (MACDA, OpenMars, EMARS) — all
-    hosted as ARCO Zarr stores.  Opens a Zarr v3 store from a HuggingFace
-    ``datasets`` repository, converts the native Mars-sol time axis to
-    Earth ``datetime64``, and exposes the result through the standard
-    anemoi xarray field-list machinery.
+    Supports multiple underlying datasets (MACDA, OpenMars, EMARS) —
+    all published as ARCO Zarr stores — served from either of two
+    hosting backends:
+
+    * ``backend: hf`` (default) — HuggingFace Datasets repos
+      (``ananyo01/ARCO-*``), opened via ``fsspec``.
+    * ``backend: earthmover`` — Earthmover / Arraylake catalogue
+      (``arco-planetary/ARCO-*``), opened via ``arraylake.Client``.
+
+    In both cases the native Mars-sol time axis is converted to a
+    synthetic Earth ``datetime64`` grid and the result is exposed
+    through the standard anemoi xarray field-list machinery.
 
     Parameters
     ----------
     context : Any
         Pipeline context.
     dataset : str
-        HuggingFace dataset id (e.g. ``"ananyo01/ARCO-MACDA"``).
+        Mars dataset id. Accepts a canonical short name (``ARCO-MACDA``,
+        ``ARCO-OpenMars``, ``ARCO-EMARS``), an HF-qualified id
+        (``ananyo01/ARCO-MACDA``), or an Earthmover-qualified id
+        (``arco-planetary/ARCO-MACDA``). The canonical name is derived
+        automatically via :func:`_normalise_dataset` and used to look up
+        the correct repository for the selected ``backend``.
     args : Any
         Additional positional arguments passed to the xarray field-list loader.
+    backend : str, optional
+        Hosting backend, one of ``"hf"`` (default) or ``"earthmover"``.
     kwargs : Any
         Additional keyword arguments passed to the xarray field-list loader.
     """
@@ -595,6 +822,7 @@ class ArcoMarsSource(XarraySourceBase):
         context: Any,
         dataset: str,
         *args: Any,
+        backend: str = "hf",
         **kwargs: Any,
     ) -> None:
         self.flavour = kwargs.pop("flavour", None)
@@ -602,13 +830,18 @@ class ArcoMarsSource(XarraySourceBase):
 
         super().__init__(context, **kwargs)
 
-        self._hf_dataset = dataset
+        self._dataset = dataset
+        self._canonical = _normalise_dataset(dataset)
+        self._backend = backend
         self._ds: xr.Dataset | None = None  # lazy
 
     # -- lazy open so the heavy I/O only happens at execution time ----------
     def _get_dataset(self) -> "xr.Dataset":
         if self._ds is None:
-            self._ds = _open_hf_zarr(self._hf_dataset)
+            self._ds = _open_arco_zarr(
+                self._canonical,
+                backend=self._backend,
+            )
         return self._ds
 
     def execute_valid_dates(self, dates: DateList) -> Any:

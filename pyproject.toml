@@ -22,6 +22,12 @@ optional-dependencies.mars = [
   "xarray>=2026.4",
   "zarr>=3",
 ]
+# Extra backend: Earthmover / Arraylake catalogue for the ARCO Mars
+# datasets (arco-planetary/ARCO-*).  Not required for the default
+# HuggingFace backend.
+optional-dependencies.mars-earthmover = [
+  "arraylake",
+]
 scripts.mars-revert-time = "anemoi.plugins.extraterrestrial.mars.revert_time:main"
 entry-points."anemoi.datasets.create.sources".arcomars = "anemoi.plugins.extraterrestrial.mars.source:ArcoMarsSource"
 entry-points."anemoi.datasets.create.sources".distance_forcings = "anemoi.plugins.extraterrestrial.distance_forcing:DistanceForcingsSource"

@@ -33,16 +33,17 @@ input:
   join:
     # --- Core variables from OpenMars (t, u, v, sp, skt, co2ice, tcdo) ---
     - arcomars:
-        dataset: ananyo01/ARCO-OpenMars
+        dataset: ARCO-OpenMars
+        # backend: hf         # default; use `earthmover` for arraylake
 
     # --- MACDA-only variables (dust, z, w, ssrd, strd) ---
     - arcomars:
-        dataset: ananyo01/ARCO-MACDA
+        dataset: ARCO-MACDA
         param: [dust, z, w, ssrd, strd]
 
     # --- Mars-specific forcings ---
     - mars_forcings:
-        dataset: ananyo01/ARCO-OpenMars
+        dataset: ARCO-OpenMars
         param:
           - cos_latitude
           - sin_latitude

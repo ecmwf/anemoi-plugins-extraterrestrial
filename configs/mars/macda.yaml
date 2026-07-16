@@ -29,10 +29,11 @@ dates:
 input:
   join:
     - arcomars:
-        dataset: ananyo01/ARCO-MACDA
+        dataset: ARCO-MACDA
+        # backend: hf         # default; use `earthmover` for arraylake
 
     - mars_forcings:
-        dataset: ananyo01/ARCO-MACDA
+        dataset: ARCO-MACDA
         param:
           - cos_latitude
           - sin_latitude

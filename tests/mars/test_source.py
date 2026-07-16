@@ -10,12 +10,18 @@ They use synthetic xarray Datasets to test the pure logic functions.
 """
 
 import numpy as np
+import pytest
 import xarray as xr
 
 from anemoi.plugins.extraterrestrial.mars.source import _DROP_VARS
 from anemoi.plugins.extraterrestrial.mars.source import _KNOWN_STORES
 from anemoi.plugins.extraterrestrial.mars.source import _RENAME_MACDA
+from anemoi.plugins.extraterrestrial.mars.source import CANONICAL_EMARS
+from anemoi.plugins.extraterrestrial.mars.source import CANONICAL_MACDA
+from anemoi.plugins.extraterrestrial.mars.source import CANONICAL_OPENMARS
 from anemoi.plugins.extraterrestrial.mars.source import _merge_openmars_eras
+from anemoi.plugins.extraterrestrial.mars.source import _normalise_dataset
+from anemoi.plugins.extraterrestrial.mars.source import _open_arco_zarr
 from anemoi.plugins.extraterrestrial.mars.source import _process_emars
 from anemoi.plugins.extraterrestrial.mars.source import _sort_and_fill_gaps
 from anemoi.plugins.extraterrestrial.mars.source import sols_to_regular_grid
@@ -88,45 +94,162 @@ class TestKnownStoresCatalogue:
 
     def test_all_datasets_exist(self):
         """All 3 expected datasets should be in the catalogue."""
-        expected_datasets = {
-            "ananyo01/ARCO-MACDA",
-            "ananyo01/ARCO-OpenMars",
-            "ananyo01/ARCO-EMARS",
-        }
+        expected_datasets = {CANONICAL_MACDA, CANONICAL_OPENMARS, CANONICAL_EMARS}
         assert set(_KNOWN_STORES.keys()) == expected_datasets
 
     def test_macda_metadata(self):
         """MACDA should have correct metadata."""
-        info = _KNOWN_STORES["ananyo01/ARCO-MACDA"]
-        assert "default" in info
+        info = _KNOWN_STORES[CANONICAL_MACDA]
         assert info["nlat"] == 36
         assert info["nlon"] == 72
         assert info["steps_per_sol"] == 12
         assert info["frequency_h"] == 2
+        # Both backends configured
+        assert info["hf"]["repo"] == "ananyo01/ARCO-MACDA"
+        assert info["hf"]["default"] == "macda_combined.zarr"
+        assert info["earthmover"]["repo"] == "arco-planetary/ARCO-MACDA"
 
     def test_openmars_metadata(self):
         """OpenMars should have correct metadata."""
-        info = _KNOWN_STORES["ananyo01/ARCO-OpenMars"]
-        assert "default" in info
+        info = _KNOWN_STORES[CANONICAL_OPENMARS]
         assert info["nlat"] == 36
         assert info["nlon"] == 72
         assert info["steps_per_sol"] == 12
         assert info["frequency_h"] == 2
+        assert info["hf"]["repo"] == "ananyo01/ARCO-OpenMars"
+        assert info["hf"]["default"] == "openmars_unified.zarr"
+        assert info["earthmover"]["repo"] == "arco-planetary/ARCO-OpenMARS"
+        # Earthmover: eras are separate groups
+        assert set(info["earthmover"]["era_groups"]) == {"my24", "my28"}
 
     def test_emars_metadata(self):
         """EMARS should have correct metadata."""
-        info = _KNOWN_STORES["ananyo01/ARCO-EMARS"]
-        assert "default" in info
+        info = _KNOWN_STORES[CANONICAL_EMARS]
         assert info["nlat"] == 36
         assert info["nlon"] == 60
         assert info["steps_per_sol"] == 24
         assert info["frequency_h"] == 1
+        assert info["hf"]["repo"] == "ananyo01/ARCO-EMARS"
+        assert info["earthmover"]["repo"] == "arco-planetary/ARCO-EMARS"
+        # Earthmover: default to ensemble mean
+        assert info["earthmover"]["default_group"] == "mean"
 
     def test_all_have_required_keys(self):
-        """All datasets should have required metadata keys."""
-        required_keys = {"default", "nlat", "nlon", "steps_per_sol", "frequency_h"}
+        """All datasets should have required top-level metadata keys."""
+        required_keys = {
+            "nlat",
+            "nlon",
+            "steps_per_sol",
+            "frequency_h",
+            "hf",
+            "earthmover",
+        }
         for dataset_id, info in _KNOWN_STORES.items():
             assert required_keys.issubset(info.keys()), f"Missing keys in {dataset_id}"
+
+
+class TestNormaliseDataset:
+    """Test the _normalise_dataset id-resolution helper."""
+
+    def test_canonical_short_names_pass_through(self):
+        assert _normalise_dataset("ARCO-MACDA") == CANONICAL_MACDA
+        assert _normalise_dataset("ARCO-OpenMars") == CANONICAL_OPENMARS
+        assert _normalise_dataset("ARCO-EMARS") == CANONICAL_EMARS
+
+    def test_hf_qualified_ids_map_to_canonical(self):
+        assert _normalise_dataset("ananyo01/ARCO-MACDA") == CANONICAL_MACDA
+        assert _normalise_dataset("ananyo01/ARCO-OpenMars") == CANONICAL_OPENMARS
+        assert _normalise_dataset("ananyo01/ARCO-EMARS") == CANONICAL_EMARS
+
+    def test_earthmover_qualified_ids_map_to_canonical(self):
+        assert _normalise_dataset("arco-planetary/ARCO-MACDA") == CANONICAL_MACDA
+        assert _normalise_dataset("arco-planetary/ARCO-OpenMARS") == CANONICAL_OPENMARS
+        assert _normalise_dataset("arco-planetary/ARCO-EMARS") == CANONICAL_EMARS
+
+    def test_case_insensitive(self):
+        assert _normalise_dataset("arco-macda") == CANONICAL_MACDA
+        assert _normalise_dataset("ARCO-openmars") == CANONICAL_OPENMARS
+
+    def test_openmars_capitalisation_variants(self):
+        """Both 'OpenMars' (HF) and 'OpenMARS' (Earthmover) resolve."""
+        assert _normalise_dataset("ARCO-OpenMars") == CANONICAL_OPENMARS
+        assert _normalise_dataset("ARCO-OpenMARS") == CANONICAL_OPENMARS
+
+    def test_unknown_id_raises(self):
+        with pytest.raises(ValueError, match="Unknown Mars dataset id"):
+            _normalise_dataset("some/other-dataset")
+
+
+class TestBackendDispatch:
+    """Test that _open_arco_zarr dispatches to the right backend."""
+
+    def test_unknown_backend_raises(self):
+        with pytest.raises(ValueError, match="Unknown backend"):
+            _open_arco_zarr("ARCO-MACDA", backend="nope")
+
+    def test_hf_backend_calls_hf_opener(self, monkeypatch):
+        """backend='hf' (the default) should call _open_hf_zarr."""
+        import anemoi.plugins.extraterrestrial.mars.source as src_mod
+
+        called: dict = {}
+
+        def fake_hf(canonical):
+            called["backend"] = "hf"
+            called["canonical"] = canonical
+            return "hf-dataset"
+
+        def fake_em(canonical):  # pragma: no cover - should not be called
+            called["backend"] = "earthmover"
+            return "em-dataset"
+
+        monkeypatch.setattr(src_mod, "_open_hf_zarr", fake_hf)
+        monkeypatch.setattr(src_mod, "_open_em_zarr", fake_em)
+
+        result = src_mod._open_arco_zarr("ananyo01/ARCO-MACDA")
+        assert result == "hf-dataset"
+        assert called == {"backend": "hf", "canonical": CANONICAL_MACDA}
+
+    def test_earthmover_backend_calls_em_opener(self, monkeypatch):
+        """backend='earthmover' should call _open_em_zarr."""
+        import anemoi.plugins.extraterrestrial.mars.source as src_mod
+
+        called: dict = {}
+
+        def fake_hf(canonical):  # pragma: no cover - should not be called
+            called["backend"] = "hf"
+            return "hf-dataset"
+
+        def fake_em(canonical):
+            called["backend"] = "earthmover"
+            called["canonical"] = canonical
+            return "em-dataset"
+
+        monkeypatch.setattr(src_mod, "_open_hf_zarr", fake_hf)
+        monkeypatch.setattr(src_mod, "_open_em_zarr", fake_em)
+
+        # Short-name id + earthmover backend
+        result = src_mod._open_arco_zarr("ARCO-EMARS", backend="earthmover")
+        assert result == "em-dataset"
+        assert called == {"backend": "earthmover", "canonical": CANONICAL_EMARS}
+
+    def test_earthmover_via_qualified_id(self, monkeypatch):
+        """Passing the earthmover-qualified id also routes correctly."""
+        import anemoi.plugins.extraterrestrial.mars.source as src_mod
+
+        called: dict = {}
+        monkeypatch.setattr(
+            src_mod,
+            "_open_hf_zarr",
+            lambda *a, **k: pytest.fail("HF should not be called"),
+        )
+        monkeypatch.setattr(
+            src_mod,
+            "_open_em_zarr",
+            lambda canonical: called.setdefault("canonical", canonical) or "em",
+        )
+
+        src_mod._open_arco_zarr("arco-planetary/ARCO-OpenMARS", backend="earthmover")
+        assert called["canonical"] == CANONICAL_OPENMARS
 
 
 class TestRenameMacda:

@@ -290,10 +290,13 @@ class MarsForcingsSource(Source):
         self.param = param if isinstance(param, list) else [param]
 
         from anemoi.plugins.extraterrestrial.mars.source import _KNOWN_STORES
+        from anemoi.plugins.extraterrestrial.mars.source import _normalise_dataset
 
-        info = _KNOWN_STORES.get(dataset)
-        if info is None:
-            raise ValueError(f"Unknown dataset '{dataset}' for mars_forcings.  " f"Known: {list(_KNOWN_STORES)}")
+        # Accept any known id form (short name, HF-qualified, or
+        # earthmover-qualified) — the grid metadata is identical
+        # across backends for a given canonical dataset.
+        canonical = _normalise_dataset(dataset)
+        info = _KNOWN_STORES[canonical]
         self._nlat = info["nlat"]
         self._nlon = info["nlon"]
         self._steps_per_sol = info["steps_per_sol"]

@@ -459,7 +459,11 @@ def compute_delta_distance(
         Delta distances in km, shape ``(N,)``.
     """
     distances = compute_distance(origin, target, date, latitudes, longitudes)
-    return distances - np.min(distances)
+    # Subtract the instantaneous maximum so the result is non-positive
+    # (0 at the farthest observer, most negative at the nearest).  This
+    # matches the docstring and preserves spatial variation without the
+    # large constant offset.
+    return distances - np.max(distances)
 
 
 # ---------------------------------------------------------------------------
