@@ -1,0 +1,41 @@
+version = 1
+
+# Cover the human-facing LICENSE and NOTICE files, which live outside LICENSES/.
+[[annotations]]
+path = ["LICENSE", "NOTICE"]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Anemoi contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Cover top-level project metadata and dotfiles.
+[[annotations]]
+path = [
+    ".gitignore",
+    ".pre-commit-config.yaml",
+    "README.md",
+    "pyproject.toml",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Anemoi contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Cover configs (recipe YAMLs and their README).
+[[annotations]]
+path = "configs/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Anemoi contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Cover nested .gitignore files.
+[[annotations]]
+path = "static/matrices/.gitignore"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Anemoi contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Cover the binary regridding matrices (numpy .npz — cannot carry a comment).
+[[annotations]]
+path = "static/matrices/mars/*.npz"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Anemoi contributors"
+SPDX-License-Identifier = "Apache-2.0"
