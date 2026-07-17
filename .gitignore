@@ -105,6 +105,10 @@ dmypy.json
 # Keep the REUSE canonical Apache-2.0 licence text (overrides *.txt above)
 !LICENSES/*.txt
 
+# Keep the release-please config + manifest (overrides *.json above)
+!.release-please-config.json
+!.release-please-manifest.json
+
 # ML artifacts
 wandb/
 mlruns/
