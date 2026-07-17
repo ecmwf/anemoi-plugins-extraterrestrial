@@ -12,6 +12,9 @@ SPDX-License-Identifier = "Apache-2.0"
 path = [
     ".gitignore",
     ".pre-commit-config.yaml",
+    ".release-please-config.json",
+    ".release-please-manifest.json",
+    "CHANGELOG.md",
     "README.md",
     "pyproject.toml",
 ]

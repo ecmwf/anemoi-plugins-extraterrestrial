@@ -1,16 +1,16 @@
 [build-system]
 build-backend = "setuptools.build_meta"
-requires = [ "setuptools>=75" ]
+requires = [ "setuptools>=75", "setuptools-scm>=8" ]
 
 [project]
 name = "anemoi-plugins-extraterrestrial"
-version = "0.2.0"
 description = "Anemoi plugin for extraterrestrial datasets"
 requires-python = ">=3.12"
 classifiers = [
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.12",
 ]
+dynamic = [ "version" ]
 dependencies = [ "anemoi-datasets" ]
 optional-dependencies.distances = [
   "astropy>=8",
@@ -40,3 +40,6 @@ dev = [
 
 [tool.setuptools]
 packages.find.where = [ "src" ]
+
+[tool.setuptools_scm]
+version_file = "src/anemoi/plugins/extraterrestrial/_version.py"
