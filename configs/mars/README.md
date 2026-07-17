@@ -127,15 +127,15 @@ GraphCast forcing design.
 
 ```bash
 # Create a dataset from MACDA
-anemoi-datasets create plugins_mars/configs/mars/macda.yaml \
+anemoi-datasets create configs/mars/macda.yaml \
     mars-macda-hf-5p0-0024-0035-2h-v1.zarr
 
 # Create from OpenMARS
-anemoi-datasets create plugins_mars/configs/mars/openmars.yaml \
+anemoi-datasets create configs/mars/openmars.yaml \
     mars-openmars-hf-5p0-0024-0035-2h-v1.zarr
 
 # Create from EMARS
-anemoi-datasets create plugins_mars/configs/mars/emars.yaml \
+anemoi-datasets create configs/mars/emars.yaml \
     mars-emars-hf-6p0-0024-0033-2h-v1.zarr
 
 # Inspect the result
