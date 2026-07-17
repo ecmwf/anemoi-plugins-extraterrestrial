@@ -11,7 +11,7 @@ classifiers = [
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.12",
 ]
-dependencies = []
+dependencies = [ "anemoi-datasets" ]
 optional-dependencies.distances = [
   "astropy>=8",
 ]
