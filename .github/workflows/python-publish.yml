@@ -10,7 +10,19 @@ on:
   release:
     types: [created]
 
+# Least-privilege permissions at the workflow level; the reusable
+# workflow declares its own job-level permissions (id-token: write for
+# PyPI OIDC trusted publishing).
+permissions:
+  contents: read
+
 jobs:
   deploy:
-    uses: ecmwf/reusable-workflows/.github/workflows/cd-pypi.yml@v2
-    secrets: inherit
+    uses: ecmwf/reusable-workflows/.github/workflows/cd-pypi.yml@d1569ef93dd05b6c40f4d1700346cc2fcb61a486  # v2
+    # Prefer PyPI OIDC (Trusted Publishing) over inherited API tokens.
+    # If the reusable workflow requires no secrets (OIDC-only), we can
+    # drop `secrets: inherit` entirely.  Kept commented for reference:
+    # secrets: inherit
+    permissions:
+      contents: read
+      id-token: write   # required for PyPI Trusted Publishing (OIDC)

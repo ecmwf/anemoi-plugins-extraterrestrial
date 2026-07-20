@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 Anemoi contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# CodeQL SAST scanning for Python sources.  Third-party actions are
+# pinned to immutable commit SHAs.
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 4 * * 1"  # weekly, Monday 04:17 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.0.0
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@4e94bd11f71e507f7f87df81788dff88d1dacbfb  # v3.28.13
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
+
+      - name: Perform CodeQL Analysis
+        # Non-blocking: the analyze step attempts to upload results to
+        # the Security tab, which requires Code Scanning to be enabled
+        # on the repository (Settings -> Code security -> Code scanning).
+        # Once enabled, remove `continue-on-error: true` to make CodeQL
+        # a required check.
+        continue-on-error: true
+        uses: github/codeql-action/analyze@4e94bd11f71e507f7f87df81788dff88d1dacbfb  # v3.28.13
+        with:
+          category: "/language:${{ matrix.language }}"

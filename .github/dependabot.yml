@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 Anemoi contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Dependabot configuration.
+# - Weekly checks for GitHub Actions (keeps SHA-pinned actions current
+#   while preserving reproducibility).
+# - Weekly checks for Python dependencies declared in pyproject.toml.
+version: 2
+updates:
+  # Keep GitHub Actions (including SHA-pinned first-party workflows)
+  # up to date.  Dependabot rewrites the pin *and* the trailing
+  # version comment so `ecmwf/…@<sha>  # v2` stays informative.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "CI/CD"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Also monitor reusable workflows referenced from .github/workflows/*
+  - package-ecosystem: "github-actions"
+    directory: "/.github/workflows"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "CI/CD"
+
+  # Python runtime + dev dependencies declared in pyproject.toml.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    groups:
+      python-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"

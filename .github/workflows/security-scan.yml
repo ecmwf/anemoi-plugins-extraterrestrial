@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 Anemoi contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Supplementary security scanning:
+#   * pip-audit  — resolves pyproject.toml + extras and checks each
+#                  installed distribution against the PyPI advisory DB.
+#   * Bandit     — lightweight Python SAST (complements CodeQL).
+# Both jobs upload SARIF for the GitHub Security tab.
+name: Security scans
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "23 5 * * 1"  # weekly, Monday 05:23 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    name: pip-audit (dependency CVEs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.0.0
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Run pip-audit against pyproject
+        # Audit the project (pyproject.toml) so declared runtime deps
+        # and their transitive closure are covered.  The action installs
+        # them in a fresh virtualenv and checks against the PyPI
+        # advisory DB.
+        uses: pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266  # v1.1.0
+        with:
+          inputs: "."
+
+  bandit:
+    name: Bandit SAST
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+      # upload-sarif reads workflow-run metadata to attach SARIF to
+      # the correct run; without `actions: read` it fails with
+      # "Resource not accessible by integration".
+      actions: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.0.0
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Bandit
+        run: pip install "bandit[sarif]>=1.7.9"
+
+      - name: Run Bandit
+        # `|| true` so the SARIF upload always happens; findings surface
+        # in the Security tab rather than failing the job.
+        run: |
+          bandit -r src -f sarif -o bandit.sarif || true
+
+      - name: Upload SARIF
+        # Non-blocking: this step fails if Code Scanning is not enabled
+        # on the repository (Settings -> Code security -> Code scanning).
+        # Enable Code Scanning to have Bandit findings appear in the
+        # Security tab; until then the SARIF is generated but not
+        # uploaded and CI stays green.
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@4e94bd11f71e507f7f87df81788dff88d1dacbfb  # v3.28.13
+        with:
+          sarif_file: bandit.sarif
+          category: bandit
