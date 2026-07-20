@@ -41,6 +41,12 @@ jobs:
           queries: security-and-quality
 
       - name: Perform CodeQL Analysis
+        # Non-blocking: the analyze step attempts to upload results to
+        # the Security tab, which requires Code Scanning to be enabled
+        # on the repository (Settings -> Code security -> Code scanning).
+        # Once enabled, remove `continue-on-error: true` to make CodeQL
+        # a required check.
+        continue-on-error: true
         uses: github/codeql-action/analyze@4e94bd11f71e507f7f87df81788dff88d1dacbfb  # v3.28.13
         with:
           category: "/language:${{ matrix.language }}"
