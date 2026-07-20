@@ -5,11 +5,24 @@ requires = [ "setuptools>=75", "setuptools-scm>=8" ]
 [project]
 name = "anemoi-plugins-extraterrestrial"
 description = "Anemoi plugin for extraterrestrial datasets"
+readme = "README.md"
 requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = [ "LICENSE" ]
+authors = [ { name = "Anemoi contributors" } ]
+keywords = [ "anemoi", "mars", "reanalysis", "arco", "extraterrestrial", "weather" ]
 classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Atmospheric Science",
 ]
+urls.Homepage = "https://github.com/ecmwf/anemoi-plugins-extraterrestrial"
+urls.Repository = "https://github.com/ecmwf/anemoi-plugins-extraterrestrial"
+urls.Issues = "https://github.com/ecmwf/anemoi-plugins-extraterrestrial/issues"
+urls.Changelog = "https://github.com/ecmwf/anemoi-plugins-extraterrestrial/blob/main/CHANGELOG.md"
 dynamic = [ "version" ]
 dependencies = [ "anemoi-datasets" ]
 optional-dependencies.distances = [
