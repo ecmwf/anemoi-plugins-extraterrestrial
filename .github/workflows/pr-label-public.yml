@@ -8,6 +8,10 @@ on:
   pull_request_target:
     types: [opened, synchronize]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   label:
-    uses: ecmwf/reusable-workflows/.github/workflows/label-pr.yml@v2
+    uses: ecmwf/reusable-workflows/.github/workflows/label-pr.yml@d1569ef93dd05b6c40f4d1700346cc2fcb61a486  # v2

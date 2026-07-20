@@ -111,11 +111,12 @@ anemoi Earth forcings:
 | `sin_latitude` | Static | sin(latitude) |
 | `cos_longitude` | Static | cos(longitude) |
 | `sin_longitude` | Static | sin(longitude) |
-| `cos_julian_day` | Dynamic | cos(sol-of-year), period = 1 Mars year (~668.6 sols) |
-| `sin_julian_day` | Dynamic | sin(sol-of-year) |
+| `cos_sol_of_year` | Dynamic | cos(sol-of-year angle), period = 1 Mars year (~668.6 sols) |
+| `sin_sol_of_year` | Dynamic | sin(sol-of-year angle) |
 | `cos_local_time` | Dynamic | cos(local sol-of-day), longitude-adjusted |
 | `sin_local_time` | Dynamic | sin(local sol-of-day) |
-| `solar_longitude` | Dynamic | Areocentric Ls in [0, 360) degrees |
+| `cos_solar_longitude` | Dynamic | cos(Ls), areocentric solar longitude |
+| `sin_solar_longitude` | Dynamic | sin(Ls), areocentric solar longitude |
 | `insolation` | Dynamic | cos(Mars solar zenith angle), clipped to [0, 1] |
 
 For **topography**, include the static surface altitude field directly from
