@@ -10,19 +10,17 @@ on:
   release:
     types: [created]
 
-# Least-privilege permissions at the workflow level; the reusable
-# workflow declares its own job-level permissions (id-token: write for
-# PyPI OIDC trusted publishing).
+# Least-privilege at the workflow scope; the deploy job inherits
+# org-level secrets (including PYPI_API_TOKEN) as required by the
+# reusable cd-pypi.yml, which uses twine + API-token auth.
 permissions:
   contents: read
 
 jobs:
   deploy:
     uses: ecmwf/reusable-workflows/.github/workflows/cd-pypi.yml@592e3dd68954d6c84039f3d9343adef8da264686  # v2
-    # Prefer PyPI OIDC (Trusted Publishing) over inherited API tokens.
-    # If the reusable workflow requires no secrets (OIDC-only), we can
-    # drop `secrets: inherit` entirely.  Kept commented for reference:
-    # secrets: inherit
-    permissions:
-      contents: read
-      id-token: write   # required for PyPI Trusted Publishing (OIDC)
+    # ecmwf/reusable-workflows v2 cd-pypi.yml authenticates to PyPI
+    # with `TWINE_USERNAME=__token__` + `TWINE_PASSWORD=secrets.PYPI_API_TOKEN`,
+    # so we must pass the org-inherited secret through.  Removing this
+    # line makes PyPI return `403 Forbidden` (empty password).
+    secrets: inherit
