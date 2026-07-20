@@ -7,9 +7,13 @@
 # - Weekly checks for Python dependencies declared in pyproject.toml.
 version: 2
 updates:
-  # Keep GitHub Actions (including SHA-pinned first-party workflows)
-  # up to date.  Dependabot rewrites the pin *and* the trailing
-  # version comment so `ecmwf/…@<sha>  # v2` stays informative.
+  # Keep GitHub Actions (and SHA-pinned reusable workflows) up to date.
+  # Dependabot rewrites the pin *and* the trailing version comment so
+  # `ecmwf/…@<sha>  # v2` stays informative.
+  #
+  # A single `directory: "/"` entry covers all workflows under
+  # `.github/workflows/**` — declaring `/.github/workflows` as a
+  # second directory just duplicates every PR.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -23,20 +27,17 @@ updates:
       prefix: "ci"
       include: "scope"
     groups:
+      # Group all non-major bumps into a single PR to reduce noise.
+      # Major bumps still open individual PRs so they can be reviewed.
       actions-minor-and-patch:
         update-types:
           - "minor"
           - "patch"
-
-  # Also monitor reusable workflows referenced from .github/workflows/*
-  - package-ecosystem: "github-actions"
-    directory: "/.github/workflows"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "CI/CD"
+      # Group SHA-only "digest" bumps (moving tags like v2, v4) so
+      # every retag doesn't spawn one PR per action.
+      actions-digest:
+        update-types:
+          - "digest"
 
   # Python runtime + dev dependencies declared in pyproject.toml.
   - package-ecosystem: "pip"
