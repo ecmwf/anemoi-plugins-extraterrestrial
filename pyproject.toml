@@ -6,11 +6,11 @@ requires = [ "setuptools>=75", "setuptools-scm>=8" ]
 name = "anemoi-plugins-extraterrestrial"
 description = "Anemoi plugin for extraterrestrial datasets"
 readme = "README.md"
-requires-python = ">=3.12"
+keywords = [ "anemoi", "extraterrestrial" ]
 license = "Apache-2.0"
 license-files = [ "LICENSE" ]
 authors = [ { name = "Anemoi contributors" } ]
-keywords = [ "anemoi", "mars", "reanalysis", "arco", "extraterrestrial", "weather" ]
+requires-python = ">=3.12"
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
@@ -19,17 +19,14 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Topic :: Scientific/Engineering :: Atmospheric Science",
 ]
-urls.Homepage = "https://github.com/ecmwf/anemoi-plugins-extraterrestrial"
-urls.Repository = "https://github.com/ecmwf/anemoi-plugins-extraterrestrial"
-urls.Issues = "https://github.com/ecmwf/anemoi-plugins-extraterrestrial/issues"
-urls.Changelog = "https://github.com/ecmwf/anemoi-plugins-extraterrestrial/blob/main/CHANGELOG.md"
 dynamic = [ "version" ]
-dependencies = [ "anemoi-datasets" ]
+dependencies = []
 optional-dependencies.distances = [
   "astropy>=8",
 ]
 optional-dependencies.mars = [
-  "earthkit-data",
+  "anemoi-datasets>=0.5.40",
+  "earthkit-data<1",
   "fsspec>=2026.6",
   "huggingface-hub>=1.21",
   "xarray>=2026.4",
@@ -41,6 +38,11 @@ optional-dependencies.mars = [
 optional-dependencies.mars-earthmover = [
   "arraylake",
 ]
+optional-dependencies.tests = [ "anemoi-plugins-extraterrestrial[mars]", "pytest" ]
+urls.Changelog = "https://github.com/ecmwf/anemoi-plugins-extraterrestrial/blob/main/CHANGELOG.md"
+urls.Homepage = "https://github.com/ecmwf/anemoi-plugins-extraterrestrial"
+urls.Issues = "https://github.com/ecmwf/anemoi-plugins-extraterrestrial/issues"
+urls.Repository = "https://github.com/ecmwf/anemoi-plugins-extraterrestrial"
 scripts.mars-revert-time = "anemoi.plugins.extraterrestrial.mars.revert_time:main"
 entry-points."anemoi.datasets.create.sources".arcomars = "anemoi.plugins.extraterrestrial.mars.source:ArcoMarsSource"
 entry-points."anemoi.datasets.create.sources".distance_forcings = "anemoi.plugins.extraterrestrial.distance_forcing:DistanceForcingsSource"
