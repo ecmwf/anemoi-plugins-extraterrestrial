@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/ecmwf/anemoi-plugins-extraterrestrial/compare/0.1.0...0.1.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* **packaging:** Declare readme + metadata so PyPI renders the description ([#27](https://github.com/ecmwf/anemoi-plugins-extraterrestrial/issues/27)) ([50de20e](https://github.com/ecmwf/anemoi-plugins-extraterrestrial/commit/50de20e047b80486083905ff12a7c50c1a170189))
+
 ## 0.1.0 (2026-07-20)
 
 
