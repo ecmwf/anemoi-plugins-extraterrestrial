@@ -26,7 +26,7 @@ optional-dependencies.distances = [
 ]
 optional-dependencies.mars = [
   "anemoi-datasets>=0.5.40",
-  "earthkit-data<1",
+  "earthkit-data<2",
   "fsspec>=2026.6",
   "huggingface-hub>=1.21",
   "xarray>=2026.4",
