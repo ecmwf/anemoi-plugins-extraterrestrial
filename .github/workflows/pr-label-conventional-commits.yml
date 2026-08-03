@@ -23,7 +23,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v5
       - name: Assign labels from Conventional Commits
         id: action-assign-labels
         uses: mauroalderete/action-assign-labels@671a4ca2da0f900464c58b8b5540a1e07133e915  # v1
