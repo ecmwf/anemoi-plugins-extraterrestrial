@@ -14,6 +14,7 @@ import xarray as xr
 
 from anemoi.plugins.extraterrestrial.mars.source import _DROP_VARS
 from anemoi.plugins.extraterrestrial.mars.source import _KNOWN_STORES
+from anemoi.plugins.extraterrestrial.mars.source import _LOCAL_ROOT_ENV
 from anemoi.plugins.extraterrestrial.mars.source import _RENAME_MACDA
 from anemoi.plugins.extraterrestrial.mars.source import CANONICAL_EMARS
 from anemoi.plugins.extraterrestrial.mars.source import CANONICAL_MACDA
@@ -22,6 +23,7 @@ from anemoi.plugins.extraterrestrial.mars.source import _merge_openmars_eras
 from anemoi.plugins.extraterrestrial.mars.source import _normalise_dataset
 from anemoi.plugins.extraterrestrial.mars.source import _open_arco_zarr
 from anemoi.plugins.extraterrestrial.mars.source import _process_emars
+from anemoi.plugins.extraterrestrial.mars.source import _resolve_local_path
 from anemoi.plugins.extraterrestrial.mars.source import _sort_and_fill_gaps
 from anemoi.plugins.extraterrestrial.mars.source import sols_to_regular_grid
 
@@ -107,6 +109,10 @@ class TestKnownStoresCatalogue:
         assert info["hf"]["repo"] == "ananyo01/ARCO-MACDA"
         assert info["hf"]["default"] == "macda_combined.zarr"
         assert info["earthmover"]["repo"] == "arco-planetary/ARCO-MACDA"
+        # Local backend: default filename matches the HF store name so a
+        # plain download of the HF zarr resolves without extra config.
+        assert info["local"]["default"] == "macda_combined.zarr"
+        assert info["local"]["default"] == info["hf"]["default"]
 
     def test_openmars_metadata(self):
         """OpenMars should have correct metadata."""
@@ -120,6 +126,8 @@ class TestKnownStoresCatalogue:
         assert info["earthmover"]["repo"] == "arco-planetary/ARCO-OpenMARS"
         # Earthmover: eras are separate groups
         assert set(info["earthmover"]["era_groups"]) == {"my24", "my28"}
+        assert info["local"]["default"] == "openmars_unified.zarr"
+        assert info["local"]["default"] == info["hf"]["default"]
 
     def test_emars_metadata(self):
         """EMARS should have correct metadata."""
@@ -132,6 +140,8 @@ class TestKnownStoresCatalogue:
         assert info["earthmover"]["repo"] == "arco-planetary/ARCO-EMARS"
         # Earthmover: default to ensemble mean
         assert info["earthmover"]["default_group"] == "mean"
+        assert info["local"]["default"] == "emars_combined.zarr"
+        assert info["local"]["default"] == info["hf"]["default"]
 
     def test_all_have_required_keys(self):
         """All datasets should have required top-level metadata keys."""
@@ -142,9 +152,16 @@ class TestKnownStoresCatalogue:
             "frequency_h",
             "hf",
             "earthmover",
+            "local",
         }
         for dataset_id, info in _KNOWN_STORES.items():
             assert required_keys.issubset(info.keys()), f"Missing keys in {dataset_id}"
+
+    def test_all_local_backends_have_default(self):
+        """Every dataset's local backend must name a default store file."""
+        for dataset_id, info in _KNOWN_STORES.items():
+            assert "default" in info["local"], f"Missing local default in {dataset_id}"
+            assert info["local"]["default"].endswith(".zarr")
 
 
 class TestNormaliseDataset:
@@ -201,8 +218,13 @@ class TestBackendDispatch:
             called["backend"] = "earthmover"
             return "em-dataset"
 
+        def fake_local(canonical, local_path=None):  # pragma: no cover
+            called["backend"] = "local"
+            return "local-dataset"
+
         monkeypatch.setattr(src_mod, "_open_hf_zarr", fake_hf)
         monkeypatch.setattr(src_mod, "_open_em_zarr", fake_em)
+        monkeypatch.setattr(src_mod, "_open_local_zarr", fake_local)
 
         result = src_mod._open_arco_zarr("ananyo01/ARCO-MACDA")
         assert result == "hf-dataset"
@@ -231,6 +253,41 @@ class TestBackendDispatch:
         assert result == "em-dataset"
         assert called == {"backend": "earthmover", "canonical": CANONICAL_EMARS}
 
+    def test_local_backend_calls_local_opener(self, monkeypatch):
+        """backend='local' should call _open_local_zarr with local_path."""
+        import anemoi.plugins.extraterrestrial.mars.source as src_mod
+
+        called: dict = {}
+
+        monkeypatch.setattr(
+            src_mod,
+            "_open_hf_zarr",
+            lambda *a, **k: pytest.fail("HF should not be called"),
+        )
+        monkeypatch.setattr(
+            src_mod,
+            "_open_em_zarr",
+            lambda *a, **k: pytest.fail("Earthmover should not be called"),
+        )
+
+        def fake_local(canonical, local_path=None):
+            called["canonical"] = canonical
+            called["local_path"] = local_path
+            return "local-dataset"
+
+        monkeypatch.setattr(src_mod, "_open_local_zarr", fake_local)
+
+        result = src_mod._open_arco_zarr(
+            "ARCO-MACDA",
+            backend="local",
+            local_path="/data/mars/macda_combined.zarr",
+        )
+        assert result == "local-dataset"
+        assert called == {
+            "canonical": CANONICAL_MACDA,
+            "local_path": "/data/mars/macda_combined.zarr",
+        }
+
     def test_earthmover_via_qualified_id(self, monkeypatch):
         """Passing the earthmover-qualified id also routes correctly."""
         import anemoi.plugins.extraterrestrial.mars.source as src_mod
@@ -249,6 +306,142 @@ class TestBackendDispatch:
 
         src_mod._open_arco_zarr("arco-planetary/ARCO-OpenMARS", backend="earthmover")
         assert called["canonical"] == CANONICAL_OPENMARS
+
+
+class TestResolveLocalPath:
+    """Test _resolve_local_path for the 'local' backend.
+
+    These use real temporary directories to mimic a user who has simply
+    downloaded the ``.zarr`` store(s) somewhere on disk and points the
+    recipe at them.
+    """
+
+    def _make_store(self, base, name):
+        """Create a fake .zarr store directory and return its path."""
+        store = base / name
+        store.mkdir(parents=True)
+        # An empty directory is enough for path resolution (we never open it).
+        (store / "zarr.json").write_text("{}")
+        return store
+
+    def test_explicit_store_path_used_verbatim(self, tmp_path):
+        """A path pointing straight at the .zarr store is used as-is."""
+        store = self._make_store(tmp_path, "macda_combined.zarr")
+        resolved = _resolve_local_path(CANONICAL_MACDA, str(store))
+        assert resolved == str(store)
+
+    def test_directory_appends_default_store(self, tmp_path):
+        """A directory containing the store resolves to the store path.
+
+        This is the 'downloaded the zarrs independently' case: point at
+        the folder and the default filename is appended automatically.
+        """
+        self._make_store(tmp_path, "macda_combined.zarr")
+        resolved = _resolve_local_path(CANONICAL_MACDA, str(tmp_path))
+        assert resolved == str(tmp_path / "macda_combined.zarr")
+
+    def test_directory_uses_dataset_specific_default(self, tmp_path):
+        """The appended filename matches the canonical dataset."""
+        self._make_store(tmp_path, "emars_combined.zarr")
+        resolved = _resolve_local_path(CANONICAL_EMARS, str(tmp_path))
+        assert resolved.endswith("emars_combined.zarr")
+
+    def test_trailing_slash_directory(self, tmp_path):
+        """A directory path with a trailing slash still resolves."""
+        self._make_store(tmp_path, "openmars_unified.zarr")
+        resolved = _resolve_local_path(CANONICAL_OPENMARS, str(tmp_path) + "/")
+        assert resolved.endswith("openmars_unified.zarr")
+
+    def test_env_var_used_when_no_local_path(self, tmp_path, monkeypatch):
+        """$ARCO_MARS_LOCAL_ROOT is used when local_path is None."""
+        self._make_store(tmp_path, "macda_combined.zarr")
+        monkeypatch.setenv(_LOCAL_ROOT_ENV, str(tmp_path))
+        resolved = _resolve_local_path(CANONICAL_MACDA, None)
+        assert resolved == str(tmp_path / "macda_combined.zarr")
+
+    def test_explicit_path_overrides_env_var(self, tmp_path, monkeypatch):
+        """An explicit local_path wins over the environment variable."""
+        env_dir = tmp_path / "env"
+        arg_dir = tmp_path / "arg"
+        self._make_store(env_dir, "macda_combined.zarr")
+        self._make_store(arg_dir, "macda_combined.zarr")
+        monkeypatch.setenv(_LOCAL_ROOT_ENV, str(env_dir))
+        resolved = _resolve_local_path(CANONICAL_MACDA, str(arg_dir))
+        assert resolved == str(arg_dir / "macda_combined.zarr")
+
+    def test_missing_path_and_env_raises_value_error(self, tmp_path, monkeypatch):
+        """No local_path and no env var is a configuration error."""
+        monkeypatch.delenv(_LOCAL_ROOT_ENV, raising=False)
+        with pytest.raises(ValueError, match="requires either a 'local_path'"):
+            _resolve_local_path(CANONICAL_MACDA, None)
+
+    def test_nonexistent_store_raises_file_not_found(self, tmp_path):
+        """Pointing at a store that does not exist is an error."""
+        missing = tmp_path / "does_not_exist.zarr"
+        with pytest.raises(FileNotFoundError, match="not found at"):
+            _resolve_local_path(CANONICAL_MACDA, str(missing))
+
+    def test_directory_without_store_raises_file_not_found(self, tmp_path):
+        """A directory missing the expected default store is an error."""
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        with pytest.raises(FileNotFoundError, match="not found at"):
+            _resolve_local_path(CANONICAL_MACDA, str(empty))
+
+
+class TestOpenLocalZarr:
+    """Test that _open_local_zarr opens the resolved path and post-processes."""
+
+    def test_opens_resolved_path_and_postprocesses(self, tmp_path, monkeypatch):
+        """_open_local_zarr should open the resolved path via xarray.open_zarr."""
+        import xarray as xr
+
+        import anemoi.plugins.extraterrestrial.mars.source as src_mod
+
+        store = tmp_path / "macda_combined.zarr"
+        store.mkdir()
+
+        opened: dict = {}
+
+        def fake_open_zarr(path, **kwargs):
+            opened["path"] = path
+            opened["kwargs"] = kwargs
+            return xr.Dataset()
+
+        def fake_postprocess(ds, canonical, info):
+            opened["canonical"] = canonical
+            opened["postprocessed"] = True
+            return ds
+
+        monkeypatch.setattr(xr, "open_zarr", fake_open_zarr)
+        monkeypatch.setattr(src_mod, "_postprocess_dataset", fake_postprocess)
+
+        src_mod._open_local_zarr(CANONICAL_MACDA, local_path=str(store))
+
+        assert opened["path"] == str(store)
+        assert opened["kwargs"]["decode_times"] is False
+        assert opened["canonical"] == CANONICAL_MACDA
+        assert opened["postprocessed"] is True
+
+    def test_directory_input_resolves_to_store(self, tmp_path, monkeypatch):
+        """Passing a directory opens the default store within it."""
+        import xarray as xr
+
+        import anemoi.plugins.extraterrestrial.mars.source as src_mod
+
+        store = tmp_path / "emars_combined.zarr"
+        store.mkdir()
+
+        opened: dict = {}
+        monkeypatch.setattr(
+            xr,
+            "open_zarr",
+            lambda path, **kwargs: opened.setdefault("path", path) or xr.Dataset(),
+        )
+        monkeypatch.setattr(src_mod, "_postprocess_dataset", lambda ds, *a, **k: ds)
+
+        src_mod._open_local_zarr(CANONICAL_EMARS, local_path=str(tmp_path))
+        assert opened["path"] == str(store)
 
 
 class TestRenameMacda:

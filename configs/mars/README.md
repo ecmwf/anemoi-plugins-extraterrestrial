@@ -14,21 +14,45 @@ Mars atmosphere reanalysis archive (Bhattacharya 2026).
 
 ## Backends
 
-Each dataset is available from two hosting backends, selectable per
+Each dataset is available from three hosting backends, selectable per
 recipe via the `backend:` argument on the `arcomars` source. The
 canonical short name (`ARCO-MACDA`, `ARCO-OpenMars`, `ARCO-EMARS`)
-is the same on both — the plugin translates it to the correct
+is the same on all — the plugin translates it to the correct
 backend-specific repository id.
 
-| Backend | Value | Repo pattern | Client | Extra install |
+| Backend | Value | Repo / path pattern | Client | Extra install |
 |---|---|---|---|---|
 | HuggingFace Datasets (default) | `hf` | `ananyo01/ARCO-*` | `fsspec[hf]` | `pip install .[mars]` |
 | Earthmover / Arraylake | `earthmover` | `arco-planetary/ARCO-*` | `arraylake` | `pip install .[mars,mars-earthmover]` |
+| Local copy on disk | `local` | `local_path` / `$ARCO_MARS_LOCAL_ROOT` | `xarray` | `pip install .[mars]` |
 
 The Earthmover backend follows the client pattern from
 [ARCO-Mars-Examples](https://github.com/GalacticBobster/ARCO-Mars-Examples)
 (`arraylake.Client().get_repo(...).readonly_session("main").store`).
 It requires Arraylake credentials in the environment.
+
+### Local backend
+
+Use `backend: local` when you have already downloaded the ARCO-Mars
+Zarr store(s) to disk (e.g. from HuggingFace) and want to build a
+dataset without any network access. Point at the store with the
+`local_path:` argument, which accepts either:
+
+- the `.zarr` store itself (`/data/mars/macda_combined.zarr`), or
+- a directory containing it (`/data/mars`) — in which case the
+  dataset's default store filename is appended automatically:
+
+| Dataset | Default local filename |
+|---|---|
+| ARCO-MACDA | `macda_combined.zarr` |
+| ARCO-OpenMars | `openmars_unified.zarr` |
+| ARCO-EMARS | `emars_combined.zarr` |
+
+If `local_path` is omitted, the `$ARCO_MARS_LOCAL_ROOT` environment
+variable is used as the base directory instead. The store is opened
+directly with `xarray.open_zarr`, so the on-disk layout only needs to
+be the downloaded `.zarr` store(s) — no HuggingFace-style directory
+nesting is required.
 
 ### Store selection per dataset
 
@@ -56,6 +80,14 @@ input:
     - arcomars:
         dataset: ARCO-EMARS
         backend: earthmover
+
+# Local copy backend (predownloaded zarr on disk)
+input:
+  join:
+    - arcomars:
+        dataset: ARCO-MACDA
+        backend: local
+        local_path: /data/mars/macda_combined.zarr
 ```
 
 ## Time coordinate
