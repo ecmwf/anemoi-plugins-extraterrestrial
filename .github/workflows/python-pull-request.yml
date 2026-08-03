@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   quality:
-    uses: ecmwf/reusable-workflows/.github/workflows/qa-precommit-run.yml@592e3dd68954d6c84039f3d9343adef8da264686  # v2
+    uses: ecmwf/reusable-workflows/.github/workflows/qa-precommit-run.yml@631d38ab6601b12c7b5a51d4dd55dac5aa6702eb  # v2
     with:
       skip-hooks: "no-commit-to-branch"
 
@@ -26,6 +26,6 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.12", "3.13"]
-    uses: ecmwf/reusable-workflows/.github/workflows/qa-pytest-pyproject.yml@592e3dd68954d6c84039f3d9343adef8da264686  # v2
+    uses: ecmwf/reusable-workflows/.github/workflows/qa-pytest-pyproject.yml@631d38ab6601b12c7b5a51d4dd55dac5aa6702eb  # v2
     with:
       python-version: ${{ matrix.python-version }}
