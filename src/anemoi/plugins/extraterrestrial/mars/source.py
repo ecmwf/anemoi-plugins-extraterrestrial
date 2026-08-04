@@ -4,7 +4,7 @@
 
 """Anemoi-datasets source for ARCO Mars reanalysis stores.
 
-Two hosting backends are supported (selectable per recipe via the
+Three hosting backends are supported (selectable per recipe via the
 ``backend:`` argument):
 
 * ``hf`` (default) — HuggingFace Datasets (``ananyo01/ARCO-*``), opened
@@ -13,6 +13,11 @@ Two hosting backends are supported (selectable per recipe via the
   (``arco-planetary/ARCO-*``), opened via ``arraylake.Client``.  See
   https://github.com/GalacticBobster/ARCO-Mars-Examples for the
   upstream reference client usage.
+* ``local`` — a local copy of the Zarr store on disk, opened directly
+  with ``xarray.open_zarr``.  The path is taken from the recipe's
+  ``local_path:`` argument (a directory or the ``.zarr`` store itself);
+  if omitted, the ``$ARCO_MARS_LOCAL_ROOT`` environment variable is used
+  as a base directory.
 
 Supports the following datasets hosted by ``ananyo01`` on HuggingFace:
 
@@ -68,6 +73,13 @@ Example YAML recipe
             dataset: ARCO-EMARS
             backend: earthmover
             param: [t, u, v]
+
+        # Local copy backend
+        - arcomars:
+            dataset: ARCO-MACDA
+            backend: local
+            local_path: /data/mars/macda_combined.zarr
+            param: [t, u, v, sp]
 """
 
 from __future__ import annotations
@@ -135,6 +147,10 @@ def sols_to_regular_grid(n: int, frequency_h: int = 2) -> np.ndarray:
 # * **earthmover** — Earthmover / Arraylake catalogue
 #   (``arco-planetary/ARCO-*``), opened via ``arraylake.Client``.  Data
 #   is organised into named *groups* within each repo.
+# * **local** — a local copy of the Zarr store on disk, opened directly
+#   via ``xarray.open_zarr``.  The path comes from the recipe's
+#   ``local_path:`` argument, or from ``$ARCO_MARS_LOCAL_ROOT`` joined
+#   with the per-dataset default filename below.
 #
 # The catalogue below is keyed by a canonical short name (``ARCO-MACDA``,
 # ``ARCO-OpenMars``, ``ARCO-EMARS``).  Recipes may pass either the short
@@ -160,6 +176,11 @@ _KNOWN_STORES: dict[str, dict] = {
             "repo": "arco-planetary/ARCO-MACDA",
             "default_group": "",
         },
+        "local": {
+            # Default filename used when only a base directory (or the
+            # $ARCO_MARS_LOCAL_ROOT env var) is provided.
+            "default": "macda_combined.zarr",
+        },
     },
     CANONICAL_OPENMARS: {
         "nlat": 36,
@@ -179,6 +200,9 @@ _KNOWN_STORES: dict[str, dict] = {
             # unified store) so the user sees one continuous dataset.
             "era_groups": ("my24", "my28"),
         },
+        "local": {
+            "default": "openmars_unified.zarr",
+        },
     },
     CANONICAL_EMARS: {
         "nlat": 36,
@@ -194,6 +218,9 @@ _KNOWN_STORES: dict[str, dict] = {
             # EMARS on earthmover has 'mean' (ensemble mean) and 'sprd'
             # (ensemble spread) groups.  We default to the mean.
             "default_group": "mean",
+        },
+        "local": {
+            "default": "emars_combined.zarr",
         },
     },
 }
@@ -721,18 +748,129 @@ def _open_em_zarr(canonical: str) -> "xr.Dataset":
     return _postprocess_dataset(ds, canonical, info)
 
 
-def _open_arco_zarr(dataset: str, backend: str = "hf") -> "xr.Dataset":
+# Environment variable naming a base directory that holds local copies
+# of the ARCO-Mars Zarr stores.  Used when a recipe selects
+# ``backend: local`` without an explicit ``local_path``.
+_LOCAL_ROOT_ENV = "ARCO_MARS_LOCAL_ROOT"
+
+
+def _resolve_local_path(canonical: str, local_path: str | None) -> str:
+    """Resolve the on-disk path to a local ARCO-Mars Zarr store.
+
+    Resolution order:
+
+    1. If ``local_path`` is given and points at a ``.zarr`` store (or any
+       existing path that is not a plain directory), it is used verbatim.
+    2. If ``local_path`` is given and is an existing directory, the
+       dataset's default store filename (from :data:`_KNOWN_STORES`) is
+       appended.
+    3. If ``local_path`` is ``None``, the ``$ARCO_MARS_LOCAL_ROOT``
+       environment variable is used as the base directory and the default
+       store filename appended.
+
+    Parameters
+    ----------
+    canonical : str
+        Canonical Mars dataset short name (e.g. ``"ARCO-MACDA"``).
+    local_path : str or None
+        Explicit path from the recipe, or ``None``.
+
+    Returns
+    -------
+    str
+        The resolved filesystem path to the Zarr store.
+
+    Raises
+    ------
+    ValueError
+        If no path can be determined (``local_path`` is ``None`` and the
+        environment variable is unset).
+    FileNotFoundError
+        If the resolved path does not exist on disk.
+    """
+    import os
+
+    default_store = _KNOWN_STORES[canonical]["local"]["default"]
+
+    if local_path is None:
+        root = os.environ.get(_LOCAL_ROOT_ENV)
+        if not root:
+            raise ValueError(
+                f"backend='local' for {canonical} requires either a "
+                f"'local_path' argument in the recipe or the "
+                f"${_LOCAL_ROOT_ENV} environment variable to be set."
+            )
+        resolved = os.path.join(root, default_store)
+    elif os.path.isdir(local_path) and not local_path.rstrip("/").endswith(".zarr"):
+        # A base directory was given: append the default store name.
+        resolved = os.path.join(local_path, default_store)
+    else:
+        # An explicit store path (``.zarr`` dir or archive) was given.
+        resolved = local_path
+
+    if not os.path.exists(resolved):
+        raise FileNotFoundError(
+            f"Local ARCO-Mars store for {canonical} not found at '{resolved}'. "
+            f"Check the 'local_path' argument or ${_LOCAL_ROOT_ENV}."
+        )
+    return resolved
+
+
+def _open_local_zarr(canonical: str, local_path: str | None = None) -> "xr.Dataset":
+    """Open a local copy of an ARCO-Mars Zarr store from disk.
+
+    The store is opened directly with :func:`xarray.open_zarr` (no remote
+    filesystem).  The path is resolved by :func:`_resolve_local_path`.
+
+    Parameters
+    ----------
+    canonical : str
+        Canonical Mars dataset short name (e.g. ``"ARCO-MACDA"``).
+    local_path : str or None
+        Path to the Zarr store or a base directory containing it.  When
+        ``None``, ``$ARCO_MARS_LOCAL_ROOT`` is consulted.
+
+    Returns
+    -------
+    xr.Dataset
+        The opened (and post-processed) dataset with time converted
+        to Earth ``datetime64``.
+    """
+    import xarray as xr
+    import zarr  # noqa: F401  – must be >= 3.0 for zarr-format-3 support
+
+    info = _KNOWN_STORES[canonical]
+    path = _resolve_local_path(canonical, local_path)
+    LOG.info("Opening local zarr store: %s", path)
+
+    ds = xr.open_zarr(
+        path,
+        consolidated=False,
+        decode_times=False,
+    )
+
+    return _postprocess_dataset(ds, canonical, info)
+
+
+def _open_arco_zarr(
+    dataset: str,
+    backend: str = "hf",
+    local_path: str | None = None,
+) -> "xr.Dataset":
     """Backend-dispatching opener for ARCO-Mars datasets.
 
     Parameters
     ----------
     dataset : str
         Any accepted dataset id (short name or fully-qualified for
-        either backend); see :func:`_normalise_dataset`.
-    backend : {"hf", "earthmover"}
+        any backend); see :func:`_normalise_dataset`.
+    backend : {"hf", "earthmover", "local"}
         Which hosting backend to use.  ``"hf"`` uses the HuggingFace
         Datasets Zarr stores; ``"earthmover"`` uses the Arraylake
-        catalogue.
+        catalogue; ``"local"`` opens a copy of the store from disk.
+    local_path : str or None
+        Path to the local Zarr store (or a directory containing it).
+        Only used when ``backend == "local"``.
 
     Returns
     -------
@@ -745,7 +883,9 @@ def _open_arco_zarr(dataset: str, backend: str = "hf") -> "xr.Dataset":
         return _open_hf_zarr(canonical)
     if backend == "earthmover":
         return _open_em_zarr(canonical)
-    raise ValueError(f"Unknown backend '{backend}'.  Expected 'hf' or 'earthmover'.")
+    if backend == "local":
+        return _open_local_zarr(canonical, local_path=local_path)
+    raise ValueError(f"Unknown backend '{backend}'.  Expected 'hf', 'earthmover', or 'local'.")
 
 
 # ---------------------------------------------------------------------------
@@ -755,15 +895,18 @@ class ArcoMarsSource(XarraySourceBase):
     """Anemoi-datasets source for ARCO Mars reanalysis.
 
     Supports multiple underlying datasets (MACDA, OpenMars, EMARS) —
-    all published as ARCO Zarr stores — served from either of two
+    all published as ARCO Zarr stores — served from any of three
     hosting backends:
 
     * ``backend: hf`` (default) — HuggingFace Datasets repos
       (``ananyo01/ARCO-*``), opened via ``fsspec``.
     * ``backend: earthmover`` — Earthmover / Arraylake catalogue
       (``arco-planetary/ARCO-*``), opened via ``arraylake.Client``.
+    * ``backend: local`` — a local copy of the Zarr store on disk,
+      opened directly via ``xarray.open_zarr``.  Supply the path via
+      the ``local_path:`` argument (or ``$ARCO_MARS_LOCAL_ROOT``).
 
-    In both cases the native Mars-sol time axis is converted to a
+    In all cases the native Mars-sol time axis is converted to a
     synthetic Earth ``datetime64`` grid and the result is exposed
     through the standard anemoi xarray field-list machinery.
 
@@ -781,7 +924,12 @@ class ArcoMarsSource(XarraySourceBase):
     args : Any
         Additional positional arguments passed to the xarray field-list loader.
     backend : str, optional
-        Hosting backend, one of ``"hf"`` (default) or ``"earthmover"``.
+        Hosting backend, one of ``"hf"`` (default), ``"earthmover"``, or
+        ``"local"``.
+    local_path : str, optional
+        Path to a locally downloaded copy of the Zarr store, or a
+        directory containing it.  Only used when ``backend == "local"``.
+        If omitted, ``$ARCO_MARS_LOCAL_ROOT`` is consulted.
     kwargs : Any
         Additional keyword arguments passed to the xarray field-list loader.
     """
@@ -794,6 +942,7 @@ class ArcoMarsSource(XarraySourceBase):
         dataset: str,
         *args: Any,
         backend: str = "hf",
+        local_path: str | None = None,
         **kwargs: Any,
     ) -> None:
         self.flavour = kwargs.pop("flavour", None)
@@ -804,6 +953,7 @@ class ArcoMarsSource(XarraySourceBase):
         self._dataset = dataset
         self._canonical = _normalise_dataset(dataset)
         self._backend = backend
+        self._local_path = local_path
         self._ds: xr.Dataset | None = None  # lazy
 
     # -- lazy open so the heavy I/O only happens at execution time ----------
@@ -812,6 +962,7 @@ class ArcoMarsSource(XarraySourceBase):
             self._ds = _open_arco_zarr(
                 self._canonical,
                 backend=self._backend,
+                local_path=self._local_path,
             )
         return self._ds
 
