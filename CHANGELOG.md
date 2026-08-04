@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/ecmwf/anemoi-plugins-extraterrestrial/compare/0.1.1...0.1.2) (2026-08-04)
+
+
+### Features
+
+* **mars:** Add local backend to arcomars source ([#38](https://github.com/ecmwf/anemoi-plugins-extraterrestrial/issues/38)) ([c12c760](https://github.com/ecmwf/anemoi-plugins-extraterrestrial/commit/c12c760450e837c0b78d99d31a2336d97d5b990c))
+
 ## [0.1.1](https://github.com/ecmwf/anemoi-plugins-extraterrestrial/compare/0.1.0...0.1.1) (2026-07-21)
 
 
