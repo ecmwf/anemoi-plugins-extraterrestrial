@@ -19,6 +19,7 @@ from anemoi.plugins.extraterrestrial.mars.source import _RENAME_MACDA
 from anemoi.plugins.extraterrestrial.mars.source import CANONICAL_EMARS
 from anemoi.plugins.extraterrestrial.mars.source import CANONICAL_MACDA
 from anemoi.plugins.extraterrestrial.mars.source import CANONICAL_OPENMARS
+from anemoi.plugins.extraterrestrial.mars.source import _emars_continuous_sols
 from anemoi.plugins.extraterrestrial.mars.source import _merge_openmars_eras
 from anemoi.plugins.extraterrestrial.mars.source import _normalise_dataset
 from anemoi.plugins.extraterrestrial.mars.source import _open_arco_zarr
@@ -1043,6 +1044,80 @@ class TestFillSolGaps:
 
         # Gap region of a time-indexed field is NaN.
         assert np.any(np.isnan(result["anal_mean_T"].values))
+
+
+class TestEmarsContinuousSols:
+    """Test EMARS continuous-sol reconstruction.
+
+    The real EMARS ``time`` coordinate is per-file "Martian hours since
+    file start" and resets at each source-file boundary, so it cannot be
+    used for sol-gap detection: consecutive records differ by ~1.9 sols,
+    which the old code mistook for gaps and "filled" with tens of
+    thousands of NaN steps at nearly every step. The store documents
+    ``anal_mean_macda_sol`` as the continuous time to use.
+    """
+
+    def _make_emars_like(self, n_sols=4, steps_per_sol=24, file_len_sols=2):
+        """Build a tiny EMARS-shaped dataset mirroring the real store.
+
+        Reproduces the exact property that broke the old logic: the
+        ``time`` coordinate is "Martian hours since file start" and
+        **resets at each source-file boundary**, so it is neither
+        continuous nor even monotonic after a global sort. The true
+        continuous axis is encoded by ``anal_mean_macda_sol`` (integer
+        sol) plus ``anal_mean_mars_hour`` (0..steps_per_sol-1).
+        """
+        base_sol = 223
+        n_steps = n_sols * steps_per_sol
+        macda_sol = (base_sol + np.arange(n_steps) // steps_per_sol).astype("float64")
+        mars_hour = (np.arange(n_steps) % steps_per_sol).astype("float64")
+
+        # ``time`` = hours since the start of the current source file,
+        # resetting every ``file_len_sols`` sols. This mirrors the real
+        # store's per-file-resetting axis and is deliberately unusable.
+        file_len_steps = file_len_sols * steps_per_sol
+        raw_time = (np.arange(n_steps) % file_len_steps).astype("float64") / steps_per_sol
+
+        lat, lon = np.arange(36), np.arange(60)
+        ds = xr.Dataset(
+            {
+                "anal_mean_T": (["time", "lat", "lon"], np.ones((n_steps, 36, 60))),
+                "anal_mean_macda_sol": (["time"], macda_sol),
+                "anal_mean_mars_hour": (["time"], mars_hour),
+            },
+            coords={"time": raw_time, "lat": lat, "lon": lon},
+        )
+        return ds
+
+    def test_reconstructs_continuous_axis(self):
+        """macda_sol + mars_hour/steps_per_sol yields a 1/steps cadence."""
+        ds = self._make_emars_like(n_sols=4, steps_per_sol=24)
+        sols = _emars_continuous_sols(ds, steps_per_sol=24)
+        assert sols is not None
+        # Sorted, the cadence is exactly 1/24 everywhere (no bogus gaps).
+        d = np.diff(np.sort(sols))
+        assert np.allclose(d, 1 / 24)
+
+    def test_missing_aux_returns_none(self):
+        """Without the aux vars, fall back to raw time (return None)."""
+        ds = self._make_emars_like()
+        ds = ds.drop_vars(["anal_mean_macda_sol", "anal_mean_mars_hour"])
+        assert _emars_continuous_sols(ds, steps_per_sol=24) is None
+
+    def test_raw_time_would_falsely_report_gaps(self):
+        """Guards the bug: the raw per-file-resetting time is unusable."""
+        ds = self._make_emars_like(n_sols=4, steps_per_sol=24, file_len_sols=2)
+        step = 1 / 24
+
+        # Reconstructed axis: sorted cadence is exactly 1/24 -> no gaps.
+        sols = _emars_continuous_sols(ds, steps_per_sol=24)
+        good_gaps = np.sum(np.diff(np.sort(sols)) > step * 1.5)
+        assert good_gaps == 0
+
+        # Raw ``time`` resets per file, so sorting produces many
+        # zero-diff duplicates and jumps -> it is NOT a clean 1/24 axis.
+        raw = np.sort(np.asarray(ds["time"].values, dtype="float64"))
+        assert not np.allclose(np.diff(raw), step)
 
 
 class TestLevelRenaming:
