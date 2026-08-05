@@ -965,6 +965,85 @@ class TestFillSolGaps:
         # Original 6 steps + 2 gaps of ~5 sols each (~60 steps each)
         assert len(result.time) > 6
 
+    def test_non_time_indexed_variable_present(self):
+        """Variables without a ``time`` dimension must not break gap fill.
+
+        Regression test for the EMARS crash. The real EMARS store
+        (``ananyo01/ARCO-EMARS/emars_combined.zarr``) contains static
+        variables with no leading ``time`` axis:
+
+          * ``anal_mean_Surface_geopotential`` -> dims ``(lat, lon)``,
+            shape ``(36, 60)``
+          * ``anal_mean_ak`` / ``anal_mean_bk`` -> dims ``(phalf,)``
+
+        The old NaN-slice builder used ``shape[1:]`` and prepended
+        ``n_missing``, so for the geopotential it built a ``(n_missing,
+        60)`` array with dims ``(lat, lon)`` -> ``lat`` got size
+        ``n_missing`` (44 in the report), conflicting with the real
+        ``lat`` (36) and raising:
+        ``AlignmentError: conflicting dimension sizes: {44, 36}``.
+
+        Uses the real EMARS grid (36 lat x 60 lon, staggered latu/lonv)
+        so the reproduction is faithful.
+        """
+        first_era = np.array([0.0, 1 / 12, 2 / 12])
+        second_era = np.array([2.0, 2.0 + 1 / 12, 2.0 + 2 / 12])  # 2 sol gap
+        raw_sols = np.concatenate([first_era, second_era])
+
+        lat = np.arange(36)
+        lon = np.arange(60)
+        latu = np.arange(36)
+        lonv = np.arange(60)
+        phalf = np.arange(29)
+
+        ds = xr.Dataset(
+            {
+                # Time-indexed fields on the various (staggered) grids.
+                "anal_mean_T": (["time", "lat", "lon"], np.ones((6, 36, 60))),
+                "anal_mean_U": (["time", "latu", "lon"], np.ones((6, 36, 60))),
+                "anal_mean_V": (["time", "lat", "lonv"], np.ones((6, 36, 60))),
+                "anal_mean_ps": (["time", "lat", "lon"], np.ones((6, 36, 60))),
+                # Static field (lat, lon) — the exact crash culprit.
+                "anal_mean_Surface_geopotential": (
+                    ["lat", "lon"],
+                    np.ones((36, 60)),
+                ),
+                # Hybrid-sigma coefficients on the phalf axis (no time).
+                "anal_mean_ak": (["phalf"], np.ones(29)),
+                "anal_mean_bk": (["phalf"], np.ones(29)),
+            },
+            coords={
+                "time": raw_sols,
+                "lat": lat,
+                "lon": lon,
+                "latu": latu,
+                "lonv": lonv,
+                "phalf": phalf,
+            },
+        )
+
+        result = _sort_and_fill_gaps(ds, raw_sols, steps_per_sol=12)
+
+        # Gap filled without error and spatial dims preserved.
+        assert len(result.time) > 6
+        assert result.sizes["lat"] == 36
+        assert result.sizes["lon"] == 60
+        assert result.sizes["phalf"] == 29
+
+        # Static variables keep their real shapes (no spurious time axis).
+        assert result["anal_mean_Surface_geopotential"].shape == (36, 60)
+        assert result["anal_mean_ak"].shape == (29,)
+        assert result["anal_mean_bk"].shape == (29,)
+        assert "time" not in result["anal_mean_Surface_geopotential"].dims
+        assert "time" not in result["anal_mean_ak"].dims
+
+        # Time-carrying vars grew along the time axis, on every grid.
+        for v in ("anal_mean_T", "anal_mean_U", "anal_mean_V", "anal_mean_ps"):
+            assert result[v].sizes["time"] == len(result.time)
+
+        # Gap region of a time-indexed field is NaN.
+        assert np.any(np.isnan(result["anal_mean_T"].values))
+
 
 class TestLevelRenaming:
     """Test level dimension renaming logic."""
