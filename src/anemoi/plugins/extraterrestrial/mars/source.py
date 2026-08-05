@@ -497,6 +497,23 @@ def _sort_and_fill_gaps(ds: "xr.Dataset", raw_sols: np.ndarray, steps_per_sol: i
     if len(gap_indices) == 0:
         return ds
 
+    # Separate out variables that are not indexed by ``time`` (e.g.
+    # static fields like ``anal_mean_Surface_geopotential`` (lat, lon)
+    # or hybrid-sigma coefficients ``anal_mean_ak``/``bk`` (phalf)).
+    # These must NOT be broadcast along the time axis during concat, and
+    # they don't need NaN steps inserted; they are re-attached after gap
+    # filling. Failing to set them aside caused an AlignmentError because
+    # the NaN-slice builder wrongly treated their leading axis as time.
+    static_vars = [v for v in ds.data_vars if "time" not in ds[v].dims]
+    static_ds = ds[static_vars] if static_vars else None
+    if static_vars:
+        LOG.debug(
+            "Excluding %d non-time-indexed variable(s) from gap fill: %s",
+            len(static_vars),
+            static_vars,
+        )
+        ds = ds.drop_vars(static_vars)
+
     pieces = []
     prev = 0
     total_inserted = 0
@@ -526,17 +543,21 @@ def _sort_and_fill_gaps(ds: "xr.Dataset", raw_sols: np.ndarray, steps_per_sol: i
         template = ds.isel(time=slice(insert_at - 1, insert_at))
         nan_data = {}
         for var in template.data_vars:
-            spatial_shape = template[var].shape[1:]
-            # Use same chunk sizes as the original data for the
-            # spatial dimensions; single chunk for the time axis.
-            spatial_chunks = tuple(s for s in spatial_shape)
+            dims = template[var].dims
+            # ``static_vars`` (variables without a ``time`` axis) were
+            # already dropped above, so every remaining variable carries
+            # the ``time`` dimension. Replace the size of the ``time``
+            # axis with ``n_missing``, keeping every other (spatial)
+            # dimension at its real size.
+            time_axis = dims.index("time")
+            new_shape = tuple(n_missing if i == time_axis else s for i, s in enumerate(template[var].shape))
             nan_arr = da.full(
-                (n_missing,) + spatial_shape,
+                new_shape,
                 np.nan,
                 dtype=np.float32,
-                chunks=(n_missing,) + spatial_chunks,
+                chunks=new_shape,
             )
-            nan_data[var] = xr.DataArray(nan_arr, dims=template[var].dims)
+            nan_data[var] = xr.DataArray(nan_arr, dims=dims)
         dummy_time = np.arange(n_missing, dtype="float64")
         nan_ds = xr.Dataset(nan_data, coords={"time": dummy_time})
         for coord in template.coords:
@@ -549,6 +570,12 @@ def _sort_and_fill_gaps(ds: "xr.Dataset", raw_sols: np.ndarray, steps_per_sol: i
 
     pieces.append(ds.isel(time=slice(prev, None)))
     ds = xr.concat(pieces, dim="time")
+
+    # Re-attach any static (non-time-indexed) variables that were set
+    # aside before gap filling.
+    if static_ds is not None:
+        ds = ds.merge(static_ds)
+
     LOG.info(
         "After sort + gap fill: %d total steps (%d NaN steps inserted).",
         len(ds.time),
