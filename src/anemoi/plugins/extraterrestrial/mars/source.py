@@ -421,6 +421,59 @@ def _process_emars(ds: "xr.Dataset") -> "xr.Dataset":
     return ds
 
 
+def _emars_continuous_sols(ds: "xr.Dataset", steps_per_sol: int) -> "np.ndarray | None":
+    """Reconstruct a continuous sol axis for EMARS from its aux variables.
+
+    The EMARS ``time`` coordinate is *not* a usable continuous time axis:
+    its own metadata describes it as "Martian hours since file start"
+    and warns that it **resets at each source NC file boundary** (see the
+    ``comment`` attribute), telling users to
+    ``Use anal_mean_macda_sol for continuous time``. Feeding the raw
+    ``time`` values into gap detection produces a spurious ~1.9-sol step
+    at essentially every record, so :func:`_sort_and_fill_gaps` reports
+    hundreds of bogus gaps and inserts tens of thousands of NaN steps.
+
+    The store provides the pieces needed to rebuild a true continuous
+    axis:
+
+      * ``anal_mean_macda_sol`` -- integer "Sols since MY24 Ls=0"
+      * ``anal_mean_mars_hour`` -- hour of the Martian day (0-23)
+
+    Combined as ``macda_sol + mars_hour / steps_per_sol`` these give a
+    monotonic axis with an exact ``1/steps_per_sol`` cadence (after the
+    sort that :func:`_sort_and_fill_gaps` performs, since the raw records
+    are interleaved).
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        The opened EMARS dataset, before ``_process_emars`` drops the
+        auxiliary variables.
+    steps_per_sol : int
+        Expected number of steps per sol (24 for EMARS).
+
+    Returns
+    -------
+    np.ndarray | None
+        The reconstructed continuous sols, or ``None`` if the required
+        auxiliary variables are not present (caller falls back to the
+        raw ``time`` coordinate).
+    """
+    sol_var = "anal_mean_macda_sol"
+    hour_var = "anal_mean_mars_hour"
+    if sol_var not in ds or hour_var not in ds:
+        LOG.warning(
+            "EMARS store missing %s/%s; falling back to raw 'time' axis (may over-report gaps).",
+            sol_var,
+            hour_var,
+        )
+        return None
+
+    sol = np.asarray(ds[sol_var].load().values, dtype="float64")
+    hour = np.asarray(ds[hour_var].load().values, dtype="float64")
+    return sol + hour / float(steps_per_sol)
+
+
 def _sort_and_fill_gaps(ds: "xr.Dataset", raw_sols: np.ndarray, steps_per_sol: int) -> "xr.Dataset":
     """Sort the dataset by sol, deduplicate, and warn about gaps.
 
@@ -606,8 +659,20 @@ def _postprocess_dataset(
 
     # ---- Detect sol gaps and insert NaN-filled steps ----
     if "time" in ds.coords:
-        # .load() ensures we get a numpy array even if the coord is dask-backed
-        raw_sols = np.asarray(ds["time"].load().values, dtype="float64")
+        raw_sols = None
+        # EMARS' raw ``time`` axis is per-file "hours since file start"
+        # and cannot be used for gap detection; rebuild a continuous sol
+        # axis from its auxiliary variables instead.
+        if canonical == CANONICAL_EMARS:
+            raw_sols = _emars_continuous_sols(ds, steps_per_sol)
+            if raw_sols is not None:
+                # Replace the unusable ``time`` coordinate so the rest of
+                # the pipeline (sort, dedup, synthetic grid) operates on
+                # the reconstructed continuous sols.
+                ds = ds.assign_coords(time=("time", raw_sols))
+        if raw_sols is None:
+            # .load() ensures we get a numpy array even if dask-backed
+            raw_sols = np.asarray(ds["time"].load().values, dtype="float64")
         ds = _sort_and_fill_gaps(ds, raw_sols, steps_per_sol)
 
         n = len(ds["time"])
