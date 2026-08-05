@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.3](https://github.com/ecmwf/anemoi-plugins-extraterrestrial/compare/0.1.2...0.1.3) (2026-08-05)
+
+
+### Bug Fixes
+
+* **mars:** Handle non-time-indexed variables in EMARS sol-gap fill ([#40](https://github.com/ecmwf/anemoi-plugins-extraterrestrial/issues/40)) ([3af4773](https://github.com/ecmwf/anemoi-plugins-extraterrestrial/commit/3af477378a36eb652a18cab9bdcc111be9d277f3))
+* **mars:** Reconstruct continuous sol axis for EMARS gap detection ([#42](https://github.com/ecmwf/anemoi-plugins-extraterrestrial/issues/42)) ([bc06d8a](https://github.com/ecmwf/anemoi-plugins-extraterrestrial/commit/bc06d8a28b124ea8975713280374cb300e0c8aa3))
+
 ## [0.1.2](https://github.com/ecmwf/anemoi-plugins-extraterrestrial/compare/0.1.1...0.1.2) (2026-08-04)
 
 
