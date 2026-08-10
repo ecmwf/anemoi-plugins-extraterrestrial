@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   deploy:
-    uses: ecmwf/reusable-workflows/.github/workflows/cd-pypi.yml@631d38ab6601b12c7b5a51d4dd55dac5aa6702eb  # v2
+    uses: ecmwf/reusable-workflows/.github/workflows/cd-pypi.yml@6441ce75e023ec2cbcdc546bd45832d561f5f432  # v2
     # ecmwf/reusable-workflows v2 cd-pypi.yml authenticates to PyPI
     # with `TWINE_USERNAME=__token__` + `TWINE_PASSWORD=secrets.PYPI_API_TOKEN`,
     # so we must pass the org-inherited secret through.  Removing this
