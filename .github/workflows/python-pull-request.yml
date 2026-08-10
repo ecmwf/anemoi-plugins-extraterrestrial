@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   quality:
-    uses: ecmwf/reusable-workflows/.github/workflows/qa-precommit-run.yml@631d38ab6601b12c7b5a51d4dd55dac5aa6702eb  # v2
+    uses: ecmwf/reusable-workflows/.github/workflows/qa-precommit-run.yml@6441ce75e023ec2cbcdc546bd45832d561f5f432  # v2
     with:
       skip-hooks: "no-commit-to-branch"
 
