@@ -14,4 +14,4 @@ permissions:
 
 jobs:
   label:
-    uses: ecmwf/reusable-workflows/.github/workflows/label-pr.yml@631d38ab6601b12c7b5a51d4dd55dac5aa6702eb  # v2
+    uses: ecmwf/reusable-workflows/.github/workflows/label-pr.yml@6441ce75e023ec2cbcdc546bd45832d561f5f432  # v2
